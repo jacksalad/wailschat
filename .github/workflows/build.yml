@@ -90,13 +90,22 @@ jobs:
           merge-multiple: true
 
       - name: Display structure of downloaded files
-        run: ls -R artifacts
+        run: |
+          echo "=== Full artifacts directory structure ==="
+          ls -la artifacts/
+          echo "=== Recursive listing ==="
+          find artifacts -type f -name "*" | head -20
+          echo "=== Total files found ==="
+          find artifacts -type f | wc -l
 
       - name: Prepare release files
         run: |
           mkdir -p release
           # Flatten artifact directories
-          find artifacts -type f -name "wailschat*" -exec cp {} release/ \;
+          find artifacts -type f \( -name "wailschat*" -o -name "*.exe" \) -exec cp {} release/ \;
+          # List files in release directory for debugging
+          echo "Files in release directory:"
+          ls -la release/
 
       - name: Generate checksums
         run: |
