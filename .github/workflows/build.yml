@@ -1,0 +1,169 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            ext: .exe
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            ext: ''
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            ext: ''
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+            ext: ''
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            ext: ''
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Get Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build WailsChat
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          wails build -platform ${{ matrix.goos }}-${{ matrix.goarch }} -o "build/bin/wailschat-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wailschat-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
+          path: build/bin/wailschat-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
+
+  release:
+    needs: build
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          # Flatten artifact directories
+          find artifacts -type f -name "wailschat*" -exec cp {} release/ \;
+
+      - name: Generate checksums
+        run: |
+          cd release
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: |
+            ## WailsChat ${{ github.ref_name }}
+
+            A desktop AI chat application built with Wails v2 (Go backend + Vue 3 frontend)
+
+            ### Downloads
+
+            Download the appropriate version for your platform:
+
+            | Platform | Architecture | File |
+            |----------|--------------|------|
+            | Windows | x64 | `wailschat-windows-amd64.exe` |
+            | Linux | x64 | `wailschat-linux-amd64` |
+            | Linux | ARM64 | `wailschat-linux-arm64` |
+            | macOS | x64 | `wailschat-darwin-amd64` |
+            | macOS | ARM64 (Apple Silicon) | `wailschat-darwin-arm64` |
+
+            ### Verification
+
+            Check the `SHA256SUMS.txt` file for checksums to verify file integrity.
+
+            ```bash
+            # Example verification on Linux/macOS
+            sha256sum -c SHA256SUMS.txt
+            ```
+
+            ### Installation
+
+            **Windows**: Download the `.exe` file and run it directly.
+
+            **Linux/macOS**: Download the binary, make it executable, and run:
+            ```bash
+            chmod +x wailschat-*
+            ./wailschat-*
+            ```
+
+            ### Release Notes
+
+            See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
+          draft: false
+          prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'alpha') }}
+          files: |
+            release/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Release Asset - Windows
+        if: github.event_name != 'workflow_dispatch'
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/wailschat-windows-amd64.exe
+          asset_name: wailschat-windows-amd64.exe
+          asset_content_type: application/octet-stream
+
+      - name: Create changelog for manual release
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          echo "Manual release triggered for version: ${{ github.event.inputs.version }}"
+          echo "All built artifacts are in the 'release' directory."
