@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 85.300003 85.300003"
+   version="1.1"
+   id="svg20"
+   width="85.300003"
+   height="85.300003"
+   sodipodi:docname="logo.svg"
+   inkscape:version="1.4.2 (f4327f4, 2025-05-13)"
+   inkscape:export-filename="logo1.png"
+   inkscape:export-xdpi="230"
+   inkscape:export-ydpi="230"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="6.6897439"
+     inkscape:cx="26.981601"
+     inkscape:cy="38.64124"
+     inkscape:window-width="1920"
+     inkscape:window-height="1009"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg20" />
+  <defs
+     id="defs5">
+    <!-- 背景径向渐变：深邃科技蓝紫 -->
+    <radialGradient
+       id="bgGradient"
+       cx="50"
+       cy="50"
+       r="59.639999"
+       fx="50"
+       fy="50"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0%"
+         stop-color="#0F172A"
+         id="stop1" />
+      <stop
+         offset="100%"
+         stop-color="#0B1120"
+         id="stop2" />
+    </radialGradient>
+    <!-- 主图形渐变：金属冷色 -->
+    <linearGradient
+       id="mainGrad"
+       x1="0"
+       y1="0"
+       x2="1"
+       y2="1">
+      <stop
+         offset="0%"
+         stop-color="#3B82F6"
+         id="stop3" />
+      <stop
+         offset="100%"
+         stop-color="#8B5CF6"
+         id="stop4" />
+    </linearGradient>
+    <!-- 光晕滤镜 -->
+    <filter
+       id="glow"
+       x="-1.6"
+       y="-1.6"
+       width="4.2"
+       height="4.2">
+      <feGaussianBlur
+         in="SourceAlpha"
+         stdDeviation="2"
+         id="feGaussianBlur4" />
+      <feMerge
+         id="feMerge5">
+        <feMergeNode
+           in="offsetblur"
+           id="feMergeNode4" />
+        <feMergeNode
+           in="SourceGraphic"
+           id="feMergeNode5" />
+      </feMerge>
+    </filter>
+    <linearGradient
+       xlink:href="#mainGrad"
+       id="linearGradient20"
+       x1="28.204393"
+       y1="38.359486"
+       x2="48.737553"
+       y2="58.892643"
+       gradientTransform="matrix(1.2802749,0,0,0.78108228,-1.6912021,20.928624)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#mainGrad"
+       id="linearGradient21"
+       x1="7.4000001"
+       y1="7.4000001"
+       x2="92.599998"
+       y2="92.599998"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#mainGrad"
+       id="linearGradient22"
+       x1="15.419845"
+       y1="15.423919"
+       x2="84.595146"
+       y2="84.59922"
+       gradientTransform="scale(1.0000574,0.99994262)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#mainGrad"
+       id="linearGradient23"
+       x1="11.063472"
+       y1="160.71469"
+       x2="29.536425"
+       y2="179.18765"
+       gradientTransform="scale(2.4630604,0.40599897)"
+       gradientUnits="userSpaceOnUse" />
+  </defs>
+  <!-- 背景圆角方形底板 -->
+  <!-- 外圈科技环 -->
+  <!-- 六边形网格节点 (抽象神经网络) -->
+  <!-- 数据节点（光点） -->
+  <!-- 中心 AI 字母组合，强科技感字体 -->
+  <!-- 底部装饰性弧线，代表通信/数据流 -->
+  <!-- 小光点围绕 -->
+  <g
+     id="g23"
+     transform="translate(-7.35,-7.35)"
+     style="display:inline"
+     sodipodi:insensitive="true">
+    <rect
+       x="8"
+       y="8"
+       width="84"
+       height="84"
+       rx="20"
+       fill="url(#bgGradient)"
+       stroke="url(#mainGrad)"
+       stroke-width="1.2"
+       id="rect5"
+       style="display:inline;fill:url(#bgGradient);stroke:url(#linearGradient21)" />
+  </g>
+  <path
+     sodipodi:type="star"
+     style="fill:#004a5f;fill-opacity:0.35433072;stroke:#6e6ecc;stroke-width:3.0812;stroke-dasharray:none;stroke-opacity:1"
+     id="path1"
+     inkscape:flatsided="true"
+     sodipodi:sides="6"
+     sodipodi:cx="18.920322"
+     sodipodi:cy="16.06642"
+     sodipodi:r1="41.034664"
+     sodipodi:r2="20.51733"
+     sodipodi:arg1="0.79450538"
+     sodipodi:arg2="1.3181042"
+     inkscape:rounded="0"
+     inkscape:randomized="0"
+     d="M 47.670758,45.345356 7.9392376,55.604495 -20.811198,26.325559 -9.8301132,-13.212517 29.901407,-23.471656 58.651843,5.8072801 Z"
+     inkscape:transform-center-x="-1.4708417"
+     inkscape:transform-center-y="-2.2721953"
+     transform="matrix(0.25855621,0.92679483,-0.9316292,0.25721452,52.72306,21.050822)" />
+  <text
+     xml:space="preserve"
+     style="font-size:74.6667px;text-align:start;writing-mode:lr-tb;direction:ltr;text-anchor:start;fill:none;fill-opacity:0.501312;stroke:#6e6ecc;stroke-width:3;stroke-dasharray:none;stroke-opacity:1"
+     x="7.2933087"
+     y="71.24189"
+     id="text1"><tspan
+       sodipodi:role="line"
+       id="tspan1"
+       x="7.2933087"
+       y="71.24189"
+       style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:74.6667px;font-family:Arial;-inkscape-font-specification:'Arial Bold';fill:#ffffff;fill-opacity:1;stroke:none">W</tspan></text>
+</svg>

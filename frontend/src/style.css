@@ -1,0 +1,941 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Settings Modal Protection ── */
+/* These rules protect the Settings modal from being affected by custom CSS */
+/* They use !important to ensure they cannot be overridden by user styles */
+.settings-modal-overlay {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 9999 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: none !important;
+  isolation: isolate;
+}
+.settings-modal-content {
+  position: relative !important;
+  z-index: 10000 !important;
+  transform: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* ── Light mode (default) ── */
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background-color: #f8fafc;
+  color: #1e293b;
+  font-family: var(--chat-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+  font-size: var(--chat-font-size, 14px);
+}
+
+#app {
+  height: 100vh;
+}
+
+/* ── Dark mode ── */
+html.dark, html.dark body {
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Markdown CSS Variables System
+   用户可通过 Settings → Styles 自定义以下所有变量
+═══════════════════════════════════════════════════════════════════ */
+:root {
+  /* ── Markdown 基础字体 ── */
+  --md-font-family: inherit;
+  --md-code-font-family: 'Consolas', 'Monaco', 'Fira Code', monospace;
+  --md-line-height: 1.7;
+  --md-max-width: 100%;
+
+  /* ── Markdown 标题样式 (h1-h6) ── */
+  --md-h1-font-family: inherit;
+  --md-h1-font-size: 1.75rem;
+  --md-h1-font-weight: 700;
+  --md-h1-color: inherit;
+  --md-h1-margin: 1.5rem 0 0.75rem 0;
+  --md-h1-padding: 0;
+  --md-h1-border-bottom: none;
+
+  --md-h2-font-family: inherit;
+  --md-h2-font-size: 1.5rem;
+  --md-h2-font-weight: 600;
+  --md-h2-color: inherit;
+  --md-h2-margin: 1.25rem 0 0.625rem 0;
+  --md-h2-padding: 0;
+  --md-h2-border-bottom: 1px solid #e2e8f0;
+
+  --md-h3-font-family: inherit;
+  --md-h3-font-size: 1.25rem;
+  --md-h3-font-weight: 600;
+  --md-h3-color: inherit;
+  --md-h3-margin: 1rem 0 0.5rem 0;
+  --md-h3-padding: 0;
+  --md-h3-border-bottom: none;
+
+  --md-h4-font-family: inherit;
+  --md-h4-font-size: 1.1rem;
+  --md-h4-font-weight: 600;
+  --md-h4-color: inherit;
+  --md-h4-margin: 0.875rem 0 0.375rem 0;
+  --md-h4-padding: 0;
+  --md-h4-border-bottom: none;
+
+  --md-h5-font-family: inherit;
+  --md-h5-font-size: 1rem;
+  --md-h5-font-weight: 600;
+  --md-h5-color: inherit;
+  --md-h5-margin: 0.75rem 0 0.25rem 0;
+  --md-h5-padding: 0;
+  --md-h5-border-bottom: none;
+
+  --md-h6-font-family: inherit;
+  --md-h6-font-size: 0.9rem;
+  --md-h6-font-weight: 600;
+  --md-h6-color: #64748b;
+  --md-h6-margin: 0.625rem 0 0.25rem 0;
+  --md-h6-padding: 0;
+  --md-h6-border-bottom: none;
+
+  /* ── Markdown 段落样式 ── */
+  --md-p-font-size: inherit;
+  --md-p-color: inherit;
+  --md-p-margin: 0.75em 0;
+  --md-p-line-height: var(--md-line-height);
+
+  /* ── Markdown 强调样式 ── */
+  --md-em-font-style: italic;
+  --md-em-color: inherit;
+  --md-strong-font-weight: 700;
+  --md-strong-color: inherit;
+  --md-del-color: inherit;
+  --md-del-text-decoration: line-through;
+
+  /* ── Markdown 行内代码样式 ── */
+  --md-code-font-size: 0.875em;
+  --md-code-font-family: var(--md-code-font-family);
+  --md-code-bg: #e2e8f0;
+  --md-code-color: inherit;
+  --md-code-padding: 0.125rem 0.375rem;
+  --md-code-border-radius: 0.25rem;
+
+  /* ── Markdown 代码块样式 ── */
+  --md-pre-bg: #f1f5f9;
+  --md-pre-color: inherit;
+  --md-pre-margin: 0.75em 0;
+  --md-pre-padding: 1rem;
+  --md-pre-border-radius: 0.5rem;
+  --md-pre-border: none;
+  --md-pre-font-size: 0.875rem;
+  --md-pre-line-height: 1.6;
+
+  /* ── Markdown 引用块样式 ── */
+  --md-blockquote-border-width: 3px;
+  --md-blockquote-border-color: #cbd5e1;
+  --md-blockquote-bg: transparent;
+  --md-blockquote-color: #64748b;
+  --md-blockquote-padding: 0 0 0 1rem;
+  --md-blockquote-margin: 0.75em 0;
+  --md-blockquote-border-radius: 0;
+
+  /* ── Markdown 列表样式 ── */
+  --md-ul-padding-left: 1.5rem;
+  --md-ul-margin: 0.5em 0;
+  --md-ul-list-style-type: disc;
+  --md-ul-marker-color: inherit;
+
+  --md-ol-padding-left: 1.5rem;
+  --md-ol-margin: 0.5em 0;
+  --md-ol-list-style-type: decimal;
+  --md-ol-marker-color: inherit;
+
+  --md-li-margin: 0.25em 0;
+  --md-li-line-height: var(--md-line-height);
+
+  /* ── Markdown 任务列表样式 ── */
+  --md-task-check-width: 16px;
+  --md-task-check-height: 16px;
+  --md-task-check-bg: #ffffff;
+  --md-task-check-border: 1px solid #cbd5e1;
+  --md-task-check-border-radius: 3px;
+  --md-task-check-checked-bg: #3b82f6;
+  --md-task-check-checked-border-color: #3b82f6;
+  --md-task-check-checked-color: #ffffff;
+  --md-task-margin-left: -1.5rem;
+  --md-task-padding-left: 0.5rem;
+
+  /* ── Markdown 表格样式 ── */
+  --md-table-border-collapse: collapse;
+  --md-table-margin: 0.75em 0;
+  --md-table-width: 100%;
+  --md-table-max-width: 100%;
+  --md-table-overflow-x: auto;
+  --md-table-display: table;
+
+  --md-th-bg: #f1f5f9;
+  --md-th-color: inherit;
+  --md-th-font-weight: 600;
+  --md-th-padding: 0.5rem 0.75rem;
+  --md-th-border: 1px solid #cbd5e1;
+  --md-th-text-align: left;
+
+  --md-td-padding: 0.5rem 0.75rem;
+  --md-td-border: 1px solid #cbd5e1;
+  --md-td-text-align: left;
+
+  --md-tr-even-bg: transparent;
+  --md-tr-hover-bg: rgba(0, 0, 0, 0.02);
+
+  /* ── Markdown 链接样式 ── */
+  --md-link-color: #3b82f6;
+  --md-link-hover-color: #2563eb;
+  --md-link-text-decoration: none;
+  --md-link-hover-text-decoration: underline;
+
+  /* ── Markdown 图片样式 ── */
+  --md-img-max-width: 100%;
+  --md-img-height: auto;
+  --md-img-border-radius: 0;
+  --md-img-margin: 0.5em 0;
+  --md-img-shadow: none;
+  --md-img-display: block;
+
+  /* ── Markdown 水平线样式 ── */
+  --md-hr-border: none;
+  --md-hr-border-top: 1px solid #e2e8f0;
+  --md-hr-margin: 1.5rem 0;
+  --md-hr-height: 0;
+}
+
+/* 深色模式 Markdown 变量 */
+html.dark {
+  --md-h2-border-bottom: 1px solid #334155;
+
+  --md-h6-color: #94a3b8;
+
+  --md-code-bg: #334155;
+  --md-code-color: #e2e8f0;
+
+  --md-pre-bg: #1e293b;
+  --md-pre-border: none;
+
+  --md-blockquote-border-color: #475569;
+  --md-blockquote-color: #94a3b8;
+
+  --md-th-bg: #1e293b;
+  --md-th-border: 1px solid #475569;
+  --md-td-border: 1px solid #475569;
+
+  --md-tr-hover-bg: rgba(255, 255, 255, 0.02);
+
+  --md-link-color: #60a5fa;
+  --md-link-hover-color: #93c5fd;
+
+  --md-hr-border-top: 1px solid #334155;
+}
+
+/* ── Markdown styles ── */
+.markdown-body {
+  line-height: var(--md-line-height);
+  word-wrap: break-word;
+  font-family: var(--md-font-family);
+  max-width: var(--md-max-width);
+}
+
+.markdown-body p {
+  margin: var(--md-p-margin);
+  color: var(--md-p-color);
+  line-height: var(--md-p-line-height);
+}
+
+/* ── Markdown 标题 (h1-h6) ── */
+.markdown-body h1 {
+  font-family: var(--md-h1-font-family);
+  font-size: var(--md-h1-font-size);
+  font-weight: var(--md-h1-font-weight);
+  color: var(--md-h1-color);
+  margin: var(--md-h1-margin);
+  padding: var(--md-h1-padding);
+  border-bottom: var(--md-h1-border-bottom);
+  line-height: 1.3;
+}
+
+.markdown-body h2 {
+  font-family: var(--md-h2-font-family);
+  font-size: var(--md-h2-font-size);
+  font-weight: var(--md-h2-font-weight);
+  color: var(--md-h2-color);
+  margin: var(--md-h2-margin);
+  padding: var(--md-h2-padding);
+  border-bottom: var(--md-h2-border-bottom);
+  line-height: 1.35;
+}
+
+.markdown-body h3 {
+  font-family: var(--md-h3-font-family);
+  font-size: var(--md-h3-font-size);
+  font-weight: var(--md-h3-font-weight);
+  color: var(--md-h3-color);
+  margin: var(--md-h3-margin);
+  padding: var(--md-h3-padding);
+  border-bottom: var(--md-h3-border-bottom);
+  line-height: 1.4;
+}
+
+.markdown-body h4 {
+  font-family: var(--md-h4-font-family);
+  font-size: var(--md-h4-font-size);
+  font-weight: var(--md-h4-font-weight);
+  color: var(--md-h4-color);
+  margin: var(--md-h4-margin);
+  padding: var(--md-h4-padding);
+  border-bottom: var(--md-h4-border-bottom);
+  line-height: 1.4;
+}
+
+.markdown-body h5 {
+  font-family: var(--md-h5-font-family);
+  font-size: var(--md-h5-font-size);
+  font-weight: var(--md-h5-font-weight);
+  color: var(--md-h5-color);
+  margin: var(--md-h5-margin);
+  padding: var(--md-h5-padding);
+  border-bottom: var(--md-h5-border-bottom);
+  line-height: 1.45;
+}
+
+.markdown-body h6 {
+  font-family: var(--md-h6-font-family);
+  font-size: var(--md-h6-font-size);
+  font-weight: var(--md-h6-font-weight);
+  color: var(--md-h6-color);
+  margin: var(--md-h6-margin);
+  padding: var(--md-h6-padding);
+  border-bottom: var(--md-h6-border-bottom);
+  line-height: 1.5;
+}
+
+/* ── Markdown 强调 ── */
+.markdown-body em {
+  font-style: var(--md-em-font-style);
+  color: var(--md-em-color);
+}
+
+.markdown-body strong {
+  font-weight: var(--md-strong-font-weight);
+  color: var(--md-strong-color);
+}
+
+.markdown-body del,
+.markdown-body s {
+  color: var(--md-del-color);
+  text-decoration: var(--md-del-text-decoration);
+}
+
+/* ── Markdown 链接 ── */
+.markdown-body a {
+  color: var(--md-link-color);
+  text-decoration: var(--md-link-text-decoration);
+  transition: color 0.15s ease;
+}
+
+.markdown-body a:hover {
+  color: var(--md-link-hover-color);
+  text-decoration: var(--md-link-hover-text-decoration);
+}
+
+/* ── Markdown 图片 ── */
+.markdown-body img {
+  max-width: var(--md-img-max-width);
+  height: var(--md-img-height);
+  border-radius: var(--md-img-border-radius);
+  margin: var(--md-img-margin);
+  box-shadow: var(--md-img-shadow);
+  display: var(--md-img-display);
+}
+
+/* ── Markdown 水平线 ── */
+.markdown-body hr {
+  border: var(--md-hr-border);
+  border-top: var(--md-hr-border-top);
+  margin: var(--md-hr-margin);
+  height: var(--md-hr-height);
+}
+
+/* ── Markdown 任务列表 ── */
+.markdown-body input[type="checkbox"] {
+  width: var(--md-task-check-width);
+  height: var(--md-task-check-height);
+  background-color: var(--md-task-check-bg);
+  border: var(--md-task-check-border);
+  border-radius: var(--md-task-check-border-radius);
+  margin-right: 0.5rem;
+  vertical-align: middle;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+}
+
+.markdown-body input[type="checkbox"]:checked {
+  background-color: var(--md-task-check-checked-bg);
+  border-color: var(--md-task-check-checked-border-color);
+}
+
+.markdown-body input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 5px;
+  height: 9px;
+  border: solid var(--md-task-check-checked-color);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.markdown-body li.task-list-item {
+  list-style: none;
+  margin-left: var(--md-task-margin-left);
+  padding-left: var(--md-task-padding-left);
+}
+
+.markdown-body li.task-list-item p {
+  display: inline;
+  margin: 0;
+}
+
+/* ── Markdown 列表 ── */
+.markdown-body ul {
+  padding-left: var(--md-ul-padding-left);
+  margin: var(--md-ul-margin);
+  list-style-type: var(--md-ul-list-style-type);
+}
+
+.markdown-body ul li {
+  margin: var(--md-li-margin);
+  line-height: var(--md-li-line-height);
+}
+
+.markdown-body ul li::marker {
+  color: var(--md-ul-marker-color);
+}
+
+.markdown-body ol {
+  padding-left: var(--md-ol-padding-left);
+  margin: var(--md-ol-margin);
+  list-style-type: var(--md-ol-list-style-type);
+}
+
+.markdown-body ol li {
+  margin: var(--md-li-margin);
+  line-height: var(--md-li-line-height);
+}
+
+.markdown-body ol li::marker {
+  color: var(--md-ol-marker-color);
+}
+
+/* 嵌套列表缩进 */
+.markdown-body ul ul,
+.markdown-body ol ul,
+.markdown-body ul ol,
+.markdown-body ol ol {
+  margin: 0.25em 0;
+}
+
+/* ── Markdown 行内代码 ── */
+.markdown-body :not(pre) > code {
+  font-family: var(--md-code-font-family);
+  font-size: var(--md-code-font-size);
+  background-color: var(--md-code-bg);
+  color: var(--md-code-color);
+  padding: var(--md-code-padding);
+  border-radius: var(--md-code-border-radius);
+}
+
+/* ── Markdown 代码块 ── */
+.markdown-body .code-block pre,
+.markdown-body .code-block pre.hljs {
+  background-color: var(--md-pre-bg);
+  border-radius: var(--md-pre-border-radius);
+  border: var(--md-pre-border);
+  padding: var(--md-pre-padding);
+  overflow-x: auto;
+  margin: var(--md-pre-margin);
+  font-size: var(--md-pre-font-size);
+  line-height: var(--md-pre-line-height);
+}
+
+.markdown-body .code-block pre code {
+  font-family: var(--md-code-font-family);
+  line-height: 1.5;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+/* ── Markdown 引用块 ── */
+.markdown-body blockquote {
+  border-left: var(--md-blockquote-border-width) solid var(--md-blockquote-border-color);
+  background-color: var(--md-blockquote-bg);
+  color: var(--md-blockquote-color);
+  padding: var(--md-blockquote-padding);
+  margin: var(--md-blockquote-margin);
+  border-radius: var(--md-blockquote-border-radius);
+}
+
+.markdown-body blockquote p {
+  margin: 0.5em 0;
+}
+
+.markdown-body blockquote p:first-child {
+  margin-top: 0;
+}
+
+.markdown-body blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+/* ── Markdown 表格 ── */
+.markdown-body table {
+  border-collapse: var(--md-table-border-collapse);
+  margin: var(--md-table-margin);
+  width: var(--md-table-width);
+  max-width: var(--md-table-max-width);
+  overflow-x: var(--md-table-overflow-x);
+  display: var(--md-table-display);
+}
+
+.markdown-body table th {
+  background-color: var(--md-th-bg);
+  color: var(--md-th-color);
+  font-weight: var(--md-th-font-weight);
+  padding: var(--md-th-padding);
+  border: var(--md-th-border);
+  text-align: var(--md-th-text-align);
+}
+
+.markdown-body table td {
+  padding: var(--md-td-padding);
+  border: var(--md-td-border);
+  text-align: var(--md-td-text-align);
+}
+
+.markdown-body table tr:nth-child(even) {
+  background-color: var(--md-tr-even-bg);
+}
+
+.markdown-body table tr:hover {
+  background-color: var(--md-tr-hover-bg);
+}
+
+
+
+/* Code block wrapper - 基础布局样式 */
+.code-block {
+  margin: 0.5em 0;
+  position: relative;
+  border-radius: 0.5rem;
+  border: 1px solid #e2e8f0;
+}
+.code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem 0.75rem;
+  background-color: #e2e8f0;
+  font-size: 0.75rem;
+  line-height: 1;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-radius: 0.5rem 0.5rem 0 0;
+  transition: box-shadow 0.2s ease;
+}
+/* 吸附时添加阴影效果 */
+.code-header.is-stuck {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+.code-lang {
+  text-transform: uppercase;
+  font-weight: 600;
+  color: #64748b;
+  letter-spacing: 0.05em;
+}
+.code-actions {
+  display: flex;
+  gap: 0.375rem;
+}
+.code-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.25rem;
+  letter-spacing: 0.05em;
+  transition: background-color 0.15s;
+}
+.copy-btn {
+  color: #64748b;
+}
+.copy-btn:hover {
+  background-color: #cbd5e1;
+  color: #1e293b;
+}
+.run-btn {
+  color: #16a34a;
+}
+.run-btn:hover {
+  background-color: #dcfce7;
+  color: #15803d;
+}
+/* Dark code-block & code-header */
+html.dark .code-block {
+  border-color: #1e293b;
+}
+html.dark .code-header {
+  background-color: #0f172a;
+}
+html.dark .code-lang {
+  color: #94a3b8;
+}
+html.dark .copy-btn {
+  color: #94a3b8;
+}
+html.dark .copy-btn:hover {
+  background-color: #1e293b;
+  color: #e2e8f0;
+}
+html.dark .run-btn {
+  color: #4ade80;
+}
+html.dark .run-btn:hover {
+  background-color: #052e16;
+  color: #4ade80;
+}
+
+/* ── Typing cursor ── */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+.typing-cursor::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: #60a5fa;
+  animation: blink 1s infinite;
+}
+
+/* ── Scrollbar ── */
+/* Light */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Dark */
+html.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* ── Code highlight: light base, dark overrides ── */
+html.dark .hljs {
+  background: #1e293b;
+  color: #e2e8f0;
+  margin: 0 !important;
+  border: none !important;
+}
+
+/* Dark mode syntax highlighting - high contrast colors */
+html.dark .hljs-comment,
+html.dark .hljs-quote {
+  color: #6b7280;
+  font-style: italic;
+}
+
+html.dark .hljs-keyword,
+html.dark .hljs-selector-tag,
+html.dark .hljs-subst {
+  color: #f472b6;
+  font-weight: bold;
+}
+
+html.dark .hljs-number,
+html.dark .hljs-literal,
+html.dark .hljs-variable,
+html.dark .hljs-template-variable,
+html.dark .hljs-tag .hljs-attr {
+  color: #fbbf24;
+}
+
+html.dark .hljs-string,
+html.dark .hljs-doctag {
+  color: #a3e635;
+}
+
+html.dark .hljs-title,
+html.dark .hljs-section,
+html.dark .hljs-selector-id {
+  color: #60a5fa;
+  font-weight: bold;
+}
+
+html.dark .hljs-subst {
+  font-weight: normal;
+}
+
+html.dark .hljs-type,
+html.dark .hljs-class .hljs-title {
+  color: #fbbf24;
+  font-weight: bold;
+}
+
+html.dark .hljs-tag,
+html.dark .hljs-name,
+html.dark .hljs-attribute {
+  color: #22d3ee;
+  font-weight: normal;
+}
+
+html.dark .hljs-regexp,
+html.dark .hljs-link {
+  color: #a3e635;
+}
+
+html.dark .hljs-symbol,
+html.dark .hljs-bullet {
+  color: #f472b6;
+}
+
+html.dark .hljs-built_in,
+html.dark .hljs-builtin-name {
+  color: #c084fc;
+}
+
+html.dark .hljs-meta {
+  color: #94a3b8;
+  font-weight: bold;
+}
+
+html.dark .hljs-deletion {
+  background: #450a0a;
+  color: #f87171;
+}
+
+html.dark .hljs-addition {
+  background: #052e16;
+  color: #4ade80;
+}
+
+html.dark .hljs-emphasis {
+  font-style: italic;
+}
+
+html.dark .hljs-strong {
+  font-weight: bold;
+}
+
+/* ── KaTeX LaTeX rendering ── */
+.markdown-body .katex-display {
+  margin: 1em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.5em 0;
+}
+.markdown-body .katex {
+  font-size: 1.1em;
+}
+.markdown-body .katex-error {
+  color: #ef4444;
+  background: #fef2f2;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-family: monospace;
+  font-size: 0.875em;
+}
+html.dark .markdown-body .katex-error {
+  color: #f87171;
+  background: #450a0a;
+}
+/* Ensure KaTeX fonts load properly */
+.markdown-body .katex .katex-html {
+  word-break: break-word;
+}
+
+/* ── Mermaid Diagram Rendering ── */
+.markdown-body .code-block.mermaid-block {
+  background-color: transparent;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  overflow: visible;
+  position: relative;
+  width: 100%;
+  min-width: 700px;
+}
+
+.markdown-body .code-block.mermaid-block .mermaid-rendered {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem;
+  background-color: transparent;
+  width: 100%;
+  min-width: 700px;
+}
+
+.markdown-body .code-block.mermaid-block .mermaid-rendered svg {
+  max-width: 900px;
+  width: 100%;
+  height: auto;
+}
+
+/* Hide the original code content after rendering */
+.markdown-body .code-block.mermaid-block.rendered pre {
+  display: none;
+}
+
+/* Dark mode mermaid styles */
+html.dark .markdown-body .code-block.mermaid-block {
+  background-color: transparent;
+  border-color: #334155;
+}
+
+html.dark .markdown-body .code-block.mermaid-block .mermaid-rendered {
+  background-color: transparent;
+}
+
+html.dark .markdown-body .code-block.mermaid-block .mermaid-rendered svg {
+  filter: invert(0);
+}
+
+/* Mermaid interactive container */
+.markdown-body .code-block.mermaid-block .mermaid-interactive {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem;
+  background-color: transparent;
+  overflow: auto;
+  min-height: 100px;
+  width: 100%;
+  min-width: 400px;
+}
+
+.markdown-body .code-block.mermaid-block .mermaid-interactive svg {
+  max-width: 900px;
+  width: 100%;
+  height: auto;
+  transition: transform 0.05s ease-out;
+  cursor: grab;
+}
+
+.markdown-body .code-block.mermaid-block .mermaid-interactive svg:active {
+  cursor: grabbing;
+}
+
+/* Mermaid toggle button */
+.toggle-btn {
+  color: #7c3aed;
+}
+.toggle-btn:hover {
+  background-color: #ede9fe;
+  color: #6d28d9;
+}
+
+/* Dark mode toggle button */
+html.dark .toggle-btn {
+  color: #a78bfa;
+}
+html.dark .toggle-btn:hover {
+  background-color: #2e1065;
+  color: #c4b5fd;
+}
+
+/* Mermaid error state */
+.markdown-body .code-block.mermaid-block .mermaid-error {
+  color: #dc2626;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0 0 0.5rem 0.5rem;
+  font-family: monospace;
+  font-size: 0.75em;
+  margin: 0;
+}
+
+html.dark .markdown-body .code-block.mermaid-block .mermaid-error {
+  color: #f87171;
+  background: #450a0a;
+  border-color: #7f1d1d;
+}
+
+/* Mermaid error with code visible */
+.markdown-body .code-block.mermaid-block.has-error .mermaid-error {
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+}
+
+/* Mermaid rendered state */
+.markdown-body .code-block.mermaid-block.rendered {
+  min-height: 150px;
+}
+
+/* Mermaid zoom hint */
+.markdown-body .code-block.mermaid-block .mermaid-rendered::after {
+  content: 'Scroll to zoom, drag to pan';
+  position: absolute;
+  bottom: 4px;
+  right: 8px;
+  font-size: 0.65rem;
+  color: #94a3b8;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+html.dark .markdown-body .code-block.mermaid-block .mermaid-rendered::after {
+  color: #64748b;
+}
+
+/* ── Chat Input Textarea ── */
+.chat-input-textarea {
+  max-height: 200px;
+  line-height: 1.5;
+  overflow: hidden; /* 默认隐藏溢出，由 JS 动态控制 */
+}

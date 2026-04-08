@@ -1,0 +1,293 @@
+/* === 紫罗兰之夜 Violet Night === */
+/* 紫色调优雅神秘 */
+
+html, body {
+  background: linear-gradient(135deg, #2C1654 0%, #1A0A3C 100%) !important;
+  color: #E8DAEF !important;
+}
+
+#app > div {
+  background: transparent !important;
+}
+
+html.dark, html.dark body {
+  background: linear-gradient(135deg, #2C1654 0%, #1A0A3C 100%) !important;
+  color: #E8DAEF !important;
+}
+
+/* 玻璃态容器 */
+.sidebar-container,
+.chat-header,
+.chat-input-area {
+  background: rgba(44, 22, 84, 0.7) !important;
+  backdrop-filter: blur(15px) !important;
+  border-color: rgba(142, 94, 253, 0.2) !important;
+}
+
+/* 用户消息气泡 */
+.user-bubble {
+  background: linear-gradient(135deg, #8E5AFD 0%, #C084FC 50%, #F472B6 100%) !important;
+  border-radius: 24px 24px 6px 24px !important;
+  box-shadow: 0 8px 24px rgba(142, 94, 253, 0.5), 0 0 40px rgba(192, 132, 252, 0.2) !important;
+  color: #FFFFFF !important;
+}
+
+/* AI 消息气泡 */
+.ai-bubble {
+  background: rgba(88, 28, 135, 0.4) !important;
+  border: 1px solid rgba(142, 94, 253, 0.3) !important;
+  border-radius: 24px 24px 24px 6px !important;
+  box-shadow: 0 4px 16px rgba(88, 28, 135, 0.3) !important;
+}
+
+/* 输入框 */
+.input-textarea {
+  background: rgba(88, 28, 135, 0.3) !important;
+  border: 1px solid rgba(142, 94, 253, 0.4) !important;
+  border-radius: 16px !important;
+  color: #E8DAEF !important;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+}
+
+.input-textarea:focus {
+  border-color: #8E5AFD !important;
+  box-shadow: 0 0 20px rgba(142, 94, 253, 0.4) !important;
+  outline: none !important;
+}
+
+.input-textarea::placeholder {
+  color: rgba(232, 218, 239, 0.5) !important;
+}
+
+/* 发送按钮 */
+.send-btn {
+  background: linear-gradient(135deg, #8E5AFD, #C084FC) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 4px 16px rgba(142, 94, 253, 0.5) !important;
+  transition: all 0.2s ease !important;
+}
+
+.send-btn:hover {
+  background: linear-gradient(135deg, #7C3AED, #A855F7) !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 6px 24px rgba(142, 94, 253, 0.6) !important;
+}
+
+/* 停止按钮 */
+.stop-btn {
+  background: linear-gradient(135deg, #F472B6, #FB7185) !important;
+  box-shadow: 0 4px 16px rgba(244, 114, 182, 0.4) !important;
+}
+
+.stop-btn:hover {
+  box-shadow: 0 6px 24px rgba(244, 114, 182, 0.6) !important;
+}
+
+/* 新建聊天按钮 */
+.new-chat-btn {
+  background: rgba(142, 94, 253, 0.25) !important;
+  border: 1px solid rgba(142, 94, 253, 0.4) !important;
+  color: #C084FC !important;
+}
+
+.new-chat-btn:hover {
+  background: rgba(142, 94, 253, 0.4) !important;
+  box-shadow: 0 0 15px rgba(142, 94, 253, 0.3) !important;
+}
+
+/* 模型选择器 */
+.model-picker-btn {
+  background: rgba(88, 28, 135, 0.4) !important;
+  border: 1px solid rgba(142, 94, 253, 0.3) !important;
+  color: #C084FC !important;
+}
+
+.model-dropdown {
+  background: rgba(44, 22, 84, 0.98) !important;
+  border: 1px solid rgba(142, 94, 253, 0.3) !important;
+  backdrop-filter: blur(15px) !important;
+}
+
+.model-option:hover {
+  background: rgba(142, 94, 253, 0.15) !important;
+}
+
+.model-option.active {
+  background: rgba(192, 132, 252, 0.2) !important;
+  color: #C084FC !important;
+}
+
+/* 会话列表 */
+.session-item {
+  border-radius: 12px !important;
+  transition: all 0.2s ease !important;
+  border: 1px solid transparent !important;
+}
+
+.session-item:hover {
+  background: rgba(142, 94, 253, 0.15) !important;
+  border-color: rgba(142, 94, 253, 0.3) !important;
+}
+
+.session-item.active {
+  background: linear-gradient(135deg, rgba(142, 94, 253, 0.25), rgba(192, 132, 252, 0.25)) !important;
+  border: 1px solid rgba(142, 94, 253, 0.5) !important;
+  box-shadow: 0 0 20px rgba(142, 94, 253, 0.2) !important;
+}
+
+.session-item .text-sm {
+  color: #E8DAEF !important;
+}
+
+.session-item .text-xs {
+  color: rgba(232, 218, 239, 0.6) !important;
+}
+
+/* 设置按钮 */
+.settings-btn {
+  background: rgba(142, 94, 253, 0.15) !important;
+  color: #C084FC !important;
+}
+
+.settings-btn:hover {
+  background: rgba(142, 94, 253, 0.25) !important;
+  box-shadow: 0 0 15px rgba(142, 94, 253, 0.3) !important;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #8E5AFD, #F472B6) !important;
+  border-radius: 4px !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #7C3AED, #E879A9) !important;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(44, 22, 84, 0.3) !important;
+}
+
+/* 代码块 */
+.code-block {
+  border: 1px solid rgba(142, 94, 253, 0.3) !important;
+  box-shadow: 0 4px 20px rgba(142, 94, 253, 0.15) !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+.code-header {
+  background: rgba(88, 28, 135, 0.5) !important;
+  border-bottom: 1px solid rgba(142, 94, 253, 0.3) !important;
+  border-radius: 12px 12px 0 0 !important;
+}
+
+.code-lang {
+  color: #C084FC !important;
+  text-shadow: 0 0 10px rgba(192, 132, 252, 0.5) !important;
+}
+
+.hljs {
+  background: rgba(26, 10, 60, 0.9) !important;
+  color: #E8DAEF !important;
+}
+
+/* Markdown 内容 */
+.markdown-body {
+  color: #E8DAEF !important;
+}
+
+.markdown-body a {
+  color: #C084FC !important;
+  text-decoration: none;
+}
+
+.markdown-body a:hover {
+  text-decoration: underline;
+  text-shadow: 0 0 10px rgba(192, 132, 252, 0.5) !important;
+}
+
+.markdown-body blockquote {
+  border-left-color: #C084FC !important;
+  background: rgba(192, 132, 252, 0.08) !important;
+  color: rgba(232, 218, 239, 0.85) !important;
+  border-radius: 0 8px 8px 0 !important;
+}
+
+.markdown-body :not(pre) > code {
+  background: rgba(142, 94, 253, 0.2) !important;
+  color: #E9D5FF !important;
+  border: 1px solid rgba(142, 94, 253, 0.3) !important;
+  border-radius: 4px !important;
+}
+
+.markdown-body table th {
+  background: rgba(142, 94, 253, 0.2) !important;
+  color: #E9D5FF !important;
+  border-color: rgba(142, 94, 253, 0.3) !important;
+}
+
+.markdown-body table td {
+  border-color: rgba(142, 94, 253, 0.2) !important;
+}
+
+.markdown-body table tr:hover {
+  background: rgba(142, 94, 253, 0.08) !important;
+}
+
+.markdown-body ul li::marker {
+  color: #C084FC !important;
+}
+
+.markdown-body ol li::marker {
+  color: #E879A9 !important;
+}
+
+/* 消息操作按钮 */
+.copy-btn, .retry-btn, .stats-btn {
+  color: #C084FC !important;
+  opacity: 0.7 !important;
+}
+
+.copy-btn:hover, .retry-btn:hover, .stats-btn:hover {
+  opacity: 1 !important;
+  text-shadow: 0 0 10px rgba(192, 132, 252, 0.5) !important;
+}
+
+/* 加载动画 */
+.loading-indicator .spinner {
+  border-color: rgba(142, 94, 253, 0.3) !important;
+  border-top-color: #8E5AFD !important;
+}
+
+.thinking-bubble {
+  background: rgba(88, 28, 135, 0.5) !important;
+  border: 1px solid rgba(142, 94, 253, 0.3) !important;
+  color: #C084FC !important;
+}
+
+/* MCP 工具面板 */
+.tool-calls-panel {
+  background: rgba(44, 22, 84, 0.9) !important;
+  border: 1px solid rgba(142, 94, 253, 0.25) !important;
+  backdrop-filter: blur(15px) !important;
+}
+
+.tool-call-item {
+  border-color: rgba(142, 94, 253, 0.15) !important;
+}
+
+.tool-call-name {
+  color: #C084FC !important;
+}
+
+.tool-call-status {
+  color: #F472B6 !important;
+}
+
+/* 统计弹窗 */
+.stats-popup {
+  background: rgba(44, 22, 84, 0.98) !important;
+  border: 1px solid rgba(142, 94, 253, 0.3) !important;
+  box-shadow: 0 8px 32px rgba(142, 94, 253, 0.3) !important;
+}

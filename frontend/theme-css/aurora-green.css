@@ -1,0 +1,294 @@
+/* === 极光绿光 Aurora Green === */
+/* 绿色科技感，适合程序员 */
+
+html, body {
+  background: linear-gradient(180deg, #0a192f 0%, #112240 50%, #0a192f 100%) !important;
+  color: #ccd6f6 !important;
+}
+
+#app > div {
+  background: transparent !important;
+}
+
+html.dark, html.dark body {
+  background: linear-gradient(180deg, #0a192f 0%, #112240 50%, #0a192f 100%) !important;
+  color: #ccd6f6 !important;
+}
+
+/* 玻璃态容器 */
+.sidebar-container,
+.chat-header,
+.chat-input-area {
+  background: rgba(17, 34, 64, 0.8) !important;
+  backdrop-filter: blur(12px) !important;
+  border-color: rgba(64, 233, 176, 0.15) !important;
+}
+
+/* 用户消息气泡 */
+.user-bubble {
+  background: linear-gradient(135deg, #64E9C0 0%, #4FD1C5 100%) !important;
+  border-radius: 18px 18px 4px 18px !important;
+  box-shadow: 0 4px 20px rgba(64, 233, 176, 0.3), 0 0 40px rgba(79, 209, 197, 0.15) !important;
+  color: #0a192f !important;
+  font-weight: 500 !important;
+}
+
+/* AI 消息气泡 */
+.ai-bubble {
+  background: rgba(17, 34, 64, 0.7) !important;
+  border: 1px solid rgba(64, 233, 176, 0.2) !important;
+  border-radius: 18px 18px 18px 4px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* 输入框 */
+.input-textarea {
+  background: rgba(17, 34, 64, 0.8) !important;
+  border: 1px solid rgba(64, 233, 176, 0.3) !important;
+  border-radius: 14px !important;
+  color: #ccd6f6 !important;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+}
+
+.input-textarea:focus {
+  border-color: #64E9C0 !important;
+  box-shadow: 0 0 15px rgba(64, 233, 176, 0.25) !important;
+  outline: none !important;
+}
+
+.input-textarea::placeholder {
+  color: rgba(204, 214, 246, 0.5) !important;
+}
+
+/* 发送按钮 */
+.send-btn {
+  background: linear-gradient(135deg, #64E9C0, #4FD1C5) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 15px rgba(64, 233, 176, 0.35) !important;
+  color: #0a192f !important;
+  transition: all 0.2s ease !important;
+}
+
+.send-btn:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 6px 25px rgba(64, 233, 176, 0.5) !important;
+  background: linear-gradient(135deg, #5CF5C7, #3FC7BB) !important;
+}
+
+/* 停止按钮 */
+.stop-btn {
+  background: linear-gradient(135deg, #F87171, #EF4444) !important;
+  box-shadow: 0 4px 15px rgba(248, 113, 113, 0.35) !important;
+}
+
+.stop-btn:hover {
+  box-shadow: 0 6px 25px rgba(248, 113, 113, 0.5) !important;
+}
+
+/* 新建聊天按钮 */
+.new-chat-btn {
+  background: rgba(64, 233, 176, 0.15) !important;
+  border: 1px solid rgba(64, 233, 176, 0.3) !important;
+  color: #64E9C0 !important;
+}
+
+.new-chat-btn:hover {
+  background: rgba(64, 233, 176, 0.25) !important;
+  box-shadow: 0 0 15px rgba(64, 233, 176, 0.3) !important;
+}
+
+/* 模型选择器 */
+.model-picker-btn {
+  background: rgba(17, 34, 64, 0.8) !important;
+  border: 1px solid rgba(64, 233, 176, 0.3) !important;
+  color: #64E9C0 !important;
+}
+
+.model-dropdown {
+  background: rgba(17, 34, 64, 0.98) !important;
+  border: 1px solid rgba(64, 233, 176, 0.25) !important;
+  backdrop-filter: blur(12px) !important;
+}
+
+.model-option:hover {
+  background: rgba(64, 233, 176, 0.1) !important;
+}
+
+.model-option.active {
+  background: rgba(64, 233, 176, 0.2) !important;
+  color: #64E9C0 !important;
+}
+
+/* 会话列表 */
+.session-item {
+  border-radius: 10px !important;
+  transition: all 0.2s ease !important;
+  border: 1px solid transparent !important;
+}
+
+.session-item:hover {
+  background: rgba(64, 233, 176, 0.08) !important;
+  border-color: rgba(64, 233, 176, 0.25) !important;
+}
+
+.session-item.active {
+  background: rgba(64, 233, 176, 0.15) !important;
+  border: 1px solid rgba(64, 233, 176, 0.4) !important;
+  box-shadow: 0 0 15px rgba(64, 233, 176, 0.15) !important;
+}
+
+.session-item .text-sm {
+  color: #ccd6f6 !important;
+}
+
+.session-item .text-xs {
+  color: #8892b0 !important;
+}
+
+/* 设置按钮 */
+.settings-btn {
+  background: rgba(64, 233, 176, 0.1) !important;
+  color: #64E9C0 !important;
+}
+
+.settings-btn:hover {
+  background: rgba(64, 233, 176, 0.2) !important;
+  box-shadow: 0 0 15px rgba(64, 233, 176, 0.25) !important;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #64E9C0, #4FD1C5) !important;
+  border-radius: 4px !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #5CF5C7, #3FC7BB) !important;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(17, 34, 64, 0.5) !important;
+}
+
+/* 代码块 */
+.code-block {
+  border: 1px solid rgba(64, 233, 176, 0.2) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2) !important;
+  border-radius: 10px !important;
+  overflow: hidden !important;
+}
+
+.code-header {
+  background: rgba(17, 34, 64, 0.9) !important;
+  border-bottom: 1px solid rgba(64, 233, 176, 0.2) !important;
+  border-radius: 10px 10px 0 0 !important;
+}
+
+.code-lang {
+  color: #64E9C0 !important;
+  text-shadow: 0 0 8px rgba(100, 233, 192, 0.5) !important;
+}
+
+.hljs {
+  background: rgba(10, 25, 47, 0.95) !important;
+  color: #ccd6f6 !important;
+}
+
+/* Markdown 内容 */
+.markdown-body {
+  color: #ccd6f6 !important;
+}
+
+.markdown-body a {
+  color: #64E9C0 !important;
+}
+
+.markdown-body a:hover {
+  color: #5CF5C7 !important;
+  text-shadow: 0 0 10px rgba(100, 233, 192, 0.4) !important;
+}
+
+.markdown-body blockquote {
+  border-left-color: #64E9C0 !important;
+  background: rgba(64, 233, 176, 0.05) !important;
+  color: #a8b2d1 !important;
+  border-radius: 0 6px 6px 0 !important;
+}
+
+.markdown-body :not(pre) > code {
+  background: rgba(64, 233, 176, 0.12) !important;
+  color: #64E9C0 !important;
+  border: 1px solid rgba(64, 233, 176, 0.2) !important;
+  border-radius: 4px !important;
+}
+
+.markdown-body table th {
+  background: rgba(64, 233, 176, 0.12) !important;
+  color: #64E9C0 !important;
+  border-color: rgba(64, 233, 176, 0.2) !important;
+}
+
+.markdown-body table td {
+  border-color: rgba(64, 233, 176, 0.12) !important;
+}
+
+.markdown-body table tr:hover {
+  background: rgba(64, 233, 176, 0.05) !important;
+}
+
+.markdown-body ul li::marker {
+  color: #64E9C0 !important;
+}
+
+.markdown-body ol li::marker {
+  color: #4FD1C5 !important;
+}
+
+/* 消息操作按钮 */
+.copy-btn, .retry-btn, .stats-btn {
+  color: #64E9C0 !important;
+  opacity: 0.7 !important;
+}
+
+.copy-btn:hover, .retry-btn:hover, .stats-btn:hover {
+  opacity: 1 !important;
+  text-shadow: 0 0 10px rgba(100, 233, 192, 0.5) !important;
+}
+
+/* 加载动画 */
+.loading-indicator .spinner {
+  border-color: rgba(64, 233, 176, 0.3) !important;
+  border-top-color: #64E9C0 !important;
+}
+
+.thinking-bubble {
+  background: rgba(17, 34, 64, 0.8) !important;
+  border: 1px solid rgba(64, 233, 176, 0.25) !important;
+  color: #64E9C0 !important;
+}
+
+/* MCP 工具面板 */
+.tool-calls-panel {
+  background: rgba(17, 34, 64, 0.9) !important;
+  border: 1px solid rgba(64, 233, 176, 0.2) !important;
+  backdrop-filter: blur(12px) !important;
+}
+
+.tool-call-item {
+  border-color: rgba(64, 233, 176, 0.1) !important;
+}
+
+.tool-call-name {
+  color: #64E9C0 !important;
+}
+
+.tool-call-status {
+  color: #4FD1C5 !important;
+}
+
+/* 统计弹窗 */
+.stats-popup {
+  background: rgba(17, 34, 64, 0.98) !important;
+  border: 1px solid rgba(64, 233, 176, 0.25) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 20px rgba(64, 233, 176, 0.1) !important;
+}
