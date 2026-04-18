@@ -4,7 +4,7 @@ import {useSessionStore} from '../stores/session'
 import {useMessageStore, type PerformanceStats} from '../stores/message'
 import {useProviderStore} from '../stores/provider'
 import {useSettingsStore} from '../stores/settings'
-import {Loader2, ChevronUp, ChevronDown} from 'lucide-vue-next'
+import {Loader2, ChevronUp, ChevronDown, ArrowUp} from 'lucide-vue-next'
 import {OnFileDrop, OnFileDropOff} from '../../wailsjs/runtime/runtime'
 import MessageBubble from './MessageBubble.vue'
 import ChatInput from './ChatInput.vue'
@@ -143,6 +143,14 @@ function onMessagesScroll() {
     scrollUpdateRaf = 0
     updateCurrentTurn()
   })
+}
+
+function scrollToTop() {
+  const container = messagesContainer.value
+  if (!container) return
+  isNavigating = true
+  smoothScrollTo(container, 0, 300, () => { isNavigating = false })
+  currentTurnIndex.value = 0
 }
 
 function smoothScrollTo(container: HTMLElement, targetScrollTop: number, duration = 250, onComplete?: () => void) {
@@ -373,6 +381,16 @@ async function retryFromUser(messageId: string) {
           <ChevronDown class="w-5 h-5" />
         </button>
       </div>
+      <!-- Scroll to top button -->
+      <div v-if="messages.length > 0" class="scroll-top-nav">
+        <button
+          class="turn-nav-btn w-9 h-9 rounded-full flex items-center justify-center bg-white/80 dark:bg-slate-700/80 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 backdrop-blur-sm cursor-pointer transition-all duration-200 hover:bg-white/95 dark:hover:bg-slate-700/95 hover:shadow-md"
+          :style="{'--nav-opacity': navOpacity}"
+          @click="scrollToTop"
+        >
+          <ArrowUp class="w-5 h-5" />
+        </button>
+      </div>
     </div>
 
     <!-- Input -->
@@ -403,5 +421,11 @@ async function retryFromUser(messageId: string) {
 }
 .turn-nav-btn:hover {
   opacity: 1 !important;
+}
+.scroll-top-nav {
+  position: absolute;
+  right: 12px;
+  bottom: 16px;
+  z-index: 10;
 }
 </style>

@@ -1,6 +1,6 @@
 import {defineStore} from 'pinia'
 import {ref, computed} from 'vue'
-import {GetSettings, SaveSettings, ReadImageAsBase64, GetSystemFonts} from '../../wailsjs/go/main/App'
+import {GetSettings, SaveSettings, ReadImageAsBase64, GetSystemFonts, GetThemeCSS} from '../../wailsjs/go/main/App'
 
 export type Theme = 'light' | 'dark'
 
@@ -40,6 +40,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const toolFileRead = computed(() => settings.value.get('tool_file_read') || '0')
   const toolFileWrite = computed(() => settings.value.get('tool_file_write') || '0')
   const toolShellExec = computed(() => settings.value.get('tool_shell_exec') || '0')
+  const selectedTheme = computed(() => settings.value.get('selected_theme') || 'Default')
 
   const shortcuts = computed<ShortcutBindings>(() => {
     const raw = settings.value.get('shortcuts')
@@ -92,6 +93,18 @@ export const useSettingsStore = defineStore('settings', () => {
       const s = await GetSettings() as Record<string, string>
       settings.value = new Map(Object.entries(s))
       settingsError.value = null
+
+      // If a custom theme is selected, reload CSS from disk (source of truth)
+      const themeName = settings.value.get('selected_theme')
+      if (themeName && themeName !== 'Default') {
+        try {
+          const css = await GetThemeCSS(themeName) as string
+          settings.value.set('custom_styles', css)
+        } catch (e) {
+          console.error('Failed to reload theme from disk:', e)
+        }
+      }
+
       // Start background image preload immediately — don't wait for applyToDOM()
       // This fires ReadImageAsBase64 in parallel with fetchProviders/fetchSessions
       if (settings.value.get('bg_image')) {
@@ -266,7 +279,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   return {
     settings, settingsError, hasError, systemPrompt, fontFamily, fontSize, chatWidth, theme, customStyles,
-    bgImage, bgOpacity, sidebarWidth, shortcuts, toolEnabled, toolFileRead, toolFileWrite, toolShellExec,
+    bgImage, bgOpacity, sidebarWidth, shortcuts, toolEnabled, toolFileRead, toolFileWrite, toolShellExec, selectedTheme,
     fetchSettings, retryFetchSettings, saveSettings, applyToDOM, applyCustomStyles, applyBackgroundImage, setTheme,
     systemFonts, fontsLoaded, loadSystemFonts, clearBgImageCache,
   }

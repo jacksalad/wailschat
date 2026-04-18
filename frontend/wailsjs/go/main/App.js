@@ -66,6 +66,14 @@ export function GetSystemFonts() {
   return window['go']['main']['App']['GetSystemFonts']();
 }
 
+export function GetThemeCSS(arg1) {
+  return window['go']['main']['App']['GetThemeCSS'](arg1);
+}
+
+export function GetThemes() {
+  return window['go']['main']['App']['GetThemes']();
+}
+
 export function MCPServerConnect(arg1) {
   return window['go']['main']['App']['MCPServerConnect'](arg1);
 }
@@ -110,6 +118,10 @@ export function OpenFileDialog() {
   return window['go']['main']['App']['OpenFileDialog']();
 }
 
+export function OpenThemeFolder() {
+  return window['go']['main']['App']['OpenThemeFolder']();
+}
+
 export function ReadImageAsBase64(arg1) {
   return window['go']['main']['App']['ReadImageAsBase64'](arg1);
 }
@@ -130,12 +142,20 @@ export function SaveSettings(arg1) {
   return window['go']['main']['App']['SaveSettings'](arg1);
 }
 
+export function SaveThemeCSS(arg1, arg2) {
+  return window['go']['main']['App']['SaveThemeCSS'](arg1, arg2);
+}
+
 export function SendMessage(arg1, arg2, arg3) {
   return window['go']['main']['App']['SendMessage'](arg1, arg2, arg3);
 }
 
 export function TestConnection(arg1, arg2, arg3) {
   return window['go']['main']['App']['TestConnection'](arg1, arg2, arg3);
+}
+
+export function ToggleFullscreen() {
+  return window['go']['main']['App']['ToggleFullscreen']();
 }
 
 export function UpdateProvider(arg1, arg2, arg3, arg4, arg5, arg6) {

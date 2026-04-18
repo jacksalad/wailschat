@@ -31,6 +31,9 @@ func main() {
 		if savedState.Maximised {
 			startState = options.Maximised
 		}
+		if savedState.Fullscreen {
+			startState = options.Fullscreen
+		}
 	}
 
 	err := wails.Run(&options.App{

@@ -575,6 +575,11 @@ UPDATE schema_version SET version = 18;
 `
 const schemaV18Vacuum = `VACUUM`
 
+const schemaV19 = `
+INSERT OR IGNORE INTO settings (key, value) VALUES ('selected_theme', 'Default');
+UPDATE schema_version SET version = 19;
+`
+
 // Init opens the SQLite database and runs migrations.
 func Init() (*sql.DB, error) {
 	configDir, err := os.UserConfigDir()
@@ -701,6 +706,10 @@ func migrate(db *sql.DB) error {
 		db.Exec(schemaV18)
 		db.Exec(schemaV18Vacuum)
 	}
+	if version < 19 {
+		// Migration v19: Add selected_theme setting for theme selector
+		db.Exec(schemaV19)
+	}
 	return nil
 }
 
@@ -727,4 +736,13 @@ func fixTypingCursorCSS(db *sql.DB) {
 // DefaultStyles returns the built-in default CSS stylesheet content.
 func DefaultStyles() string {
 	return defaultStyles
+}
+
+// DataDir returns the application data directory path (e.g. %LOCALAPPDATA%/wailschat).
+func DataDir() (string, error) {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("db: get config dir: %w", err)
+	}
+	return filepath.Join(configDir, "wailschat"), nil
 }

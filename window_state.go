@@ -12,11 +12,12 @@ import (
 
 // windowState holds persistent window geometry.
 type windowState struct {
-	X         int  `json:"x"`
-	Y         int  `json:"y"`
-	Width     int  `json:"width"`
-	Height    int  `json:"height"`
-	Maximised bool `json:"maximised"`
+	X          int  `json:"x"`
+	Y          int  `json:"y"`
+	Width      int  `json:"width"`
+	Height     int  `json:"height"`
+	Maximised  bool `json:"maximised"`
+	Fullscreen bool `json:"fullscreen"`
 }
 
 // windowStateFile returns the path to the window state JSON file.
@@ -65,8 +66,9 @@ func saveWindowState(ctx context.Context) {
 	x, y := wailsRuntime.WindowGetPosition(ctx)
 	w, h := wailsRuntime.WindowGetSize(ctx)
 	maximised := wailsRuntime.WindowIsMaximised(ctx)
+	fullscreen := wailsRuntime.WindowIsFullscreen(ctx)
 
-	state := windowState{X: x, Y: y, Width: w, Height: h, Maximised: maximised}
+	state := windowState{X: x, Y: y, Width: w, Height: h, Maximised: maximised, Fullscreen: fullscreen}
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		log.Printf("Failed to marshal window state: %v", err)

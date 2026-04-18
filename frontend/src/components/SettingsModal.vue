@@ -2,7 +2,7 @@
 import {ref, onMounted, onBeforeUnmount, computed} from 'vue'
 import {useProviderStore, type Provider} from '../stores/provider'
 import {useSettingsStore, type Theme, type ShortcutBindings} from '../stores/settings'
-import {GetModels, GetDefaultStyles, OpenFileDialog} from '../../wailsjs/go/main/App'
+import {GetModels, GetDefaultStyles, OpenFileDialog, GetThemes, GetThemeCSS, SaveThemeCSS, OpenThemeFolder} from '../../wailsjs/go/main/App'
 import {model} from '../../wailsjs/go/models'
 import {Server, Settings2, MessageSquare, Palette, Keyboard, Plug} from 'lucide-vue-next'
 
@@ -97,6 +97,202 @@ const stylesCSS = ref('')
 const defaultCSS = ref('')
 const stylesLoading = ref(false)
 const stylesSaved = ref(false)
+
+// --- Theme selector state ---
+interface ThemeInfo { name: string; isDefault: boolean; css: string }
+const themes = ref<ThemeInfo[]>([])
+const currentTheme = ref<string>('Default')
+const themesLoading = ref(false)
+
+async function loadThemes() {
+  themesLoading.value = true
+  themeColorCache.value.clear()
+  try {
+    themes.value = await GetThemes() as ThemeInfo[]
+    currentTheme.value = settingsStore.selectedTheme || 'Default'
+  } catch (e) {
+    console.error('Failed to load themes:', e)
+  } finally {
+    themesLoading.value = false
+  }
+}
+
+async function selectTheme(themeName: string) {
+  currentTheme.value = themeName
+  try {
+    const css = await GetThemeCSS(themeName) as string
+    stylesCSS.value = css
+  } catch (e) {
+    console.error('Failed to load theme CSS:', e)
+  }
+}
+
+async function openThemeFolderAction() {
+  try {
+    await OpenThemeFolder()
+  } catch (e) {
+    console.error('Failed to open theme folder:', e)
+  }
+}
+
+async function refreshThemes() {
+  await loadThemes()
+}
+
+// Cache extracted theme colors to avoid re-parsing CSS on every render
+const themeColorCache = ref<Map<string, ThemeColors>>(new Map())
+
+function getThemeColors(themeName: string, css: string): ThemeColors {
+  const cached = themeColorCache.value.get(themeName)
+  if (cached) return cached
+  const colors = extractThemeColors(css, themeName)
+  themeColorCache.value.set(themeName, colors)
+  return colors
+}
+
+interface ThemeColors {
+  bodyBg: string
+  bodyText: string
+  sidebarBg: string
+  headerBg: string
+  userBubble: string
+  aiBubble: string
+  accent: string
+  inputBg: string
+  borderColor: string
+}
+
+const DEFAULT_LIGHT_COLORS: ThemeColors = {
+  bodyBg: '#f8fafc',
+  bodyText: '#1e293b',
+  sidebarBg: '#f1f5f9',
+  headerBg: '#ffffff',
+  userBubble: 'rgba(37, 99, 235, 0.5)',
+  aiBubble: 'rgba(241, 245, 249, 0.5)',
+  accent: '#2563eb',
+  inputBg: '#ffffff',
+  borderColor: '#e2e8f0',
+}
+
+function extractFirstColor(css: string, selectors: string[], props: string[]): string | null {
+  for (const sel of selectors) {
+    const escaped = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    // Match selector block — handle both single-line and multi-line
+    const blockRe = new RegExp(escaped + '\\s*\\{([^}]*)\\}', 's')
+    const blockMatch = css.match(blockRe)
+    if (blockMatch) {
+      for (const prop of props) {
+        const propRe = new RegExp(prop + '\\s*:\\s*([^;}]+)', 'i')
+        const propMatch = blockMatch[1].match(propRe)
+        if (propMatch) {
+          const val = propMatch[1].trim()
+          if (val.startsWith('var(')) {
+            const fb = val.match(/var\([^,]+,\s*([^)]+)\)/)
+            if (fb) return fb[1].trim()
+            continue
+          }
+          // For background shorthand, extract the first color token
+          if (prop === 'background' || prop === 'background-image') {
+            const colorToken = val.match(/(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\))/)
+            if (colorToken) return colorToken[1]
+            continue
+          }
+          return val
+        }
+      }
+    }
+  }
+  return null
+}
+
+// Generate a deterministic hue from a string (0-360)
+function nameToHue(name: string): number {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return ((hash % 360) + 360) % 360
+}
+
+// Build a full color palette from a single hue
+function hueToPalette(hue: number): ThemeColors {
+  const h = hue
+  return {
+    bodyBg: `hsl(${h}, 15%, 96%)`,
+    bodyText: `hsl(${h}, 20%, 15%)`,
+    sidebarBg: `hsl(${h}, 30%, 20%)`,
+    headerBg: `hsl(${h}, 15%, 98%)`,
+    userBubble: `hsla(${(h + 200) % 360}, 65%, 55%, 0.5)`,
+    aiBubble: `hsla(${h}, 15%, 92%, 0.5)`,
+    accent: `hsl(${(h + 200) % 360}, 70%, 50%)`,
+    inputBg: `hsl(${h}, 15%, 99%)`,
+    borderColor: `hsl(${h}, 10%, 88%)`,
+  }
+}
+
+function extractThemeColors(css: string, themeName: string): ThemeColors {
+  const props = ['background-color', 'background']
+  const c = { ...DEFAULT_LIGHT_COLORS }
+  let extracted = 0
+
+  // Body background
+  const bodyBg = extractFirstColor(css, ['html, body', 'html body', 'body', 'html', ':root'], props)
+  if (bodyBg) { c.bodyBg = bodyBg; extracted++ }
+
+  // Body text color
+  const bodyText = extractFirstColor(css, ['html, body', 'html body', 'body', 'html', ':root'], ['color'])
+  if (bodyText) { c.bodyText = bodyText; extracted++ }
+
+  // Dark / sidebar background — dark mode body or sidebar-specific
+  const darkBg = extractFirstColor(css,
+    ['html.dark, html.dark body', 'html.dark body', 'html.dark', '.sidebar-container', '.sidebar'],
+    props)
+  if (darkBg) { c.sidebarBg = darkBg; extracted++ }
+
+  // Chat header
+  const headerBg = extractFirstColor(css, ['.chat-header', '.header'], props)
+  if (headerBg) { c.headerBg = headerBg; extracted++ }
+
+  // User bubble
+  const userBubble = extractFirstColor(css, ['.user-bubble', '.message.user', '.msg-user'], props)
+  if (userBubble) { c.userBubble = userBubble; extracted++ }
+
+  // AI bubble
+  const aiBubble = extractFirstColor(css, ['.ai-bubble', '.message.assistant', '.msg-ai'], props)
+  if (aiBubble) { c.aiBubble = aiBubble; extracted++ }
+
+  // Accent color (buttons, highlights)
+  const accent = extractFirstColor(css, ['.send-btn', '.new-chat-btn', '.accent', 'button'], props)
+  if (accent) { c.accent = accent; extracted++ }
+
+  // Input background
+  const inputBg = extractFirstColor(css, ['.input-textarea', '.chat-input-area', '.chat-input', 'textarea'], props)
+  if (inputBg) { c.inputBg = inputBg; extracted++ }
+
+  // Border color
+  const border = extractFirstColor(css, ['.chat-input-area', '.chat-header', '.border', '*'], ['border-color', 'border'])
+  if (border) { c.borderColor = border; extracted++ }
+
+  // If extraction found very little, use name-based palette as primary colors
+  // so each custom theme is visually distinct even with minimal CSS
+  if (extracted < 3 && themeName !== 'Default') {
+    const palette = hueToPalette(nameToHue(themeName))
+    // Only override colors that weren't successfully extracted
+    if (extracted === 0) return palette
+    // Partial: blend extracted with name-based palette
+    if (!bodyBg) c.bodyBg = palette.bodyBg
+    if (!bodyText) c.bodyText = palette.bodyText
+    if (!darkBg) c.sidebarBg = palette.sidebarBg
+    if (!headerBg) c.headerBg = palette.headerBg
+    if (!userBubble) c.userBubble = palette.userBubble
+    if (!aiBubble) c.aiBubble = palette.aiBubble
+    if (!accent) c.accent = palette.accent
+    if (!inputBg) c.inputBg = palette.inputBg
+    if (!border) c.borderColor = palette.borderColor
+  }
+
+  return c
+}
 
 // --- Shortcuts settings state ---
 const shortcutBindings = ref<ShortcutBindings>({ ...settingsStore.shortcuts })
@@ -482,12 +678,24 @@ onMounted(async () => {
   } finally {
     stylesLoading.value = false
   }
+
+  // Load theme list after initial styles are ready
+  await loadThemes()
 })
 
 async function saveStyles() {
   await settingsStore.saveSettings({
     custom_styles: stylesCSS.value,
+    selected_theme: currentTheme.value,
   })
+  // If editing a custom theme, also save to disk
+  if (currentTheme.value !== 'Default') {
+    try {
+      await SaveThemeCSS(currentTheme.value, stylesCSS.value)
+    } catch (e) {
+      console.error('Failed to save theme file:', e)
+    }
+  }
   settingsStore.applyCustomStyles()
   stylesSaved.value = true
   setTimeout(() => { stylesSaved.value = false }, 2000)
@@ -495,6 +703,7 @@ async function saveStyles() {
 
 function resetStyles() {
   stylesCSS.value = defaultCSS.value
+  currentTheme.value = 'Default'
 }
 
 // --- Provider management state ---
@@ -1030,16 +1239,90 @@ async function remove(id: number) {
         <template v-if="activeTab === 'styles'">
           <div class="space-y-3 h-full flex flex-col">
             <div class="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">
-              Custom CSS styles with highest priority. Edits here override all default styles. Refer to
-              <code class="bg-slate-100 dark:bg-slate-700 px-1 rounded">styles-doc.md</code> for available selectors and examples.
+              Select a theme or edit CSS directly. Place custom <code class="bg-slate-100 dark:bg-slate-700 px-1 rounded">.css</code> files in the themes folder to add new themes.
             </div>
+
+            <!-- Theme selector grid -->
+            <div v-if="!themesLoading" class="grid grid-cols-3 gap-2 flex-shrink-0">
+              <div
+                v-for="theme in themes"
+                :key="theme.name"
+                @click="selectTheme(theme.name)"
+                :class="[
+                  'relative p-2 rounded-lg border-2 cursor-pointer transition-all',
+                  currentTheme === theme.name
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm'
+                    : 'border-slate-200 dark:border-slate-600 hover:border-slate-300 dark:hover:border-slate-500 bg-white dark:bg-slate-700'
+                ]"
+              >
+                <!-- Selected indicator -->
+                <div v-if="currentTheme === theme.name" class="absolute top-1 right-1 z-10">
+                  <svg class="w-3.5 h-3.5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                  </svg>
+                </div>
+
+                <!-- Mini chat preview -->
+                <div
+                  class="rounded overflow-hidden h-16 flex"
+                  :style="{backgroundColor: getThemeColors(theme.name, theme.css).bodyBg, borderColor: getThemeColors(theme.name, theme.css).borderColor, borderWidth: '1px'}"
+                >
+                  <!-- Mini sidebar -->
+                  <div class="w-5 flex-shrink-0 flex flex-col gap-px p-px" :style="{backgroundColor: getThemeColors(theme.name, theme.css).sidebarBg}">
+                    <div class="rounded-sm h-1.5 w-full mt-0.5" :style="{backgroundColor: getThemeColors(theme.name, theme.css).accent, opacity: 0.8}"></div>
+                    <div class="rounded-sm h-1 w-3/4 mt-1" :style="{backgroundColor: getThemeColors(theme.name, theme.css).bodyText, opacity: 0.15}"></div>
+                    <div class="rounded-sm h-1 w-full mt-0.5" :style="{backgroundColor: getThemeColors(theme.name, theme.css).bodyText, opacity: 0.1}"></div>
+                    <div class="rounded-sm h-1 w-2/3 mt-0.5" :style="{backgroundColor: getThemeColors(theme.name, theme.css).bodyText, opacity: 0.1}"></div>
+                  </div>
+                  <!-- Mini chat area -->
+                  <div class="flex-1 flex flex-col justify-center gap-1 px-1" :style="{backgroundColor: getThemeColors(theme.name, theme.css).bodyBg}">
+                    <!-- AI bubble -->
+                    <div class="rounded-sm h-2.5 w-3/4 self-start" :style="{backgroundColor: getThemeColors(theme.name, theme.css).aiBubble}"></div>
+                    <!-- User bubble -->
+                    <div class="rounded-sm h-2.5 w-3/5 self-end" :style="{backgroundColor: getThemeColors(theme.name, theme.css).userBubble}"></div>
+                  </div>
+                </div>
+
+                <!-- Theme name + label -->
+                <div class="flex items-baseline justify-between mt-1">
+                  <div class="text-xs font-medium text-slate-800 dark:text-white truncate">
+                    {{ theme.name }}
+                  </div>
+                  <span class="text-[9px] text-slate-400 dark:text-slate-500 flex-shrink-0 ml-1">
+                    {{ theme.isDefault ? 'Built-in' : 'Custom' }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="themesLoading" class="text-center text-slate-400 dark:text-slate-500 text-sm py-2">
+              Loading themes...
+            </div>
+
+            <!-- Theme folder button + refresh -->
+            <div class="flex gap-2 flex-shrink-0 items-center">
+              <button @click="openThemeFolderAction" class="px-3 py-1.5 bg-slate-100 dark:bg-slate-600 hover:bg-slate-200 dark:hover:bg-slate-500 rounded-lg text-xs font-medium transition-colors text-slate-700 dark:text-white">
+                Open Theme Folder
+              </button>
+              <button @click="refreshThemes" class="px-3 py-1.5 bg-slate-100 dark:bg-slate-600 hover:bg-slate-200 dark:hover:bg-slate-500 rounded-lg text-xs font-medium transition-colors text-slate-700 dark:text-white">
+                Refresh
+              </button>
+              <div class="flex-1"></div>
+              <span class="text-[10px] text-slate-400 dark:text-slate-500">
+                {{ themes.filter(t => !t.isDefault).length }} custom theme(s)
+              </span>
+            </div>
+
+            <!-- CSS textarea editor -->
             <textarea
               v-model="stylesCSS"
               :disabled="stylesLoading"
               spellcheck="false"
-              class="flex-1 w-full px-3 py-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-300 dark:border-slate-600 focus:border-blue-500 focus:outline-none resize-none text-slate-800 dark:text-slate-200 placeholder-slate-400 font-mono text-xs leading-relaxed min-h-[400px]"
+              class="flex-1 w-full px-3 py-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-300 dark:border-slate-600 focus:border-blue-500 focus:outline-none resize-none text-slate-800 dark:text-slate-200 placeholder-slate-400 font-mono text-xs leading-relaxed min-h-[200px]"
             ></textarea>
-            <div class="flex gap-2">
+
+            <!-- Action buttons -->
+            <div class="flex gap-2 flex-shrink-0">
               <button @click="resetStyles" class="px-4 py-2 bg-slate-100 dark:bg-slate-600 hover:bg-slate-200 dark:hover:bg-slate-500 rounded-lg text-sm font-medium transition-colors text-slate-700 dark:text-white">
                 Reset to Default
               </button>

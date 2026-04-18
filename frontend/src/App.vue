@@ -6,6 +6,7 @@ import {useProviderStore} from './stores/provider'
 import {useSessionStore} from './stores/session'
 import {useSettingsStore} from './stores/settings'
 import {useMessageStore} from './stores/message'
+import {ToggleFullscreen} from '../wailsjs/go/main/App'
 
 const providerStore = useProviderStore()
 const sessionStore = useSessionStore()
@@ -41,6 +42,13 @@ function matchesShortcut(e: KeyboardEvent, binding: string): boolean {
 }
 
 function onGlobalKeydown(e: KeyboardEvent) {
+  // F11 fullscreen toggle
+  if (e.key === 'F11') {
+    e.preventDefault()
+    ToggleFullscreen()
+    return
+  }
+
   const shortcuts = settingsStore.shortcuts
   const target = e.target as HTMLElement
   const inInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable

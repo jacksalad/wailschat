@@ -1,3 +1,24 @@
+export namespace main {
+	
+	export class ThemeInfo {
+	    name: string;
+	    isDefault: boolean;
+	    css: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ThemeInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.isDefault = source["isDefault"];
+	        this.css = source["css"];
+	    }
+	}
+
+}
+
 export namespace model {
 	
 	export class FunctionDef {

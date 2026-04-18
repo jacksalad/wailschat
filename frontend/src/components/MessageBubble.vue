@@ -133,7 +133,7 @@ function formatResult(result: string): string {
       <!-- Text content -->
       <div v-if="isUser" class="message-content whitespace-pre-wrap">{{ message.content }}</div>
       <div v-else class="message-content-wrapper">
-        <MarkdownMessage :content="message.content" class="message-content" />
+        <MarkdownMessage :content="message.content" :streaming="streaming" class="message-content" />
         <span v-if="streaming" class="typing-cursor-bar"></span>
       </div>
 

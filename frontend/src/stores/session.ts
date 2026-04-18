@@ -49,7 +49,7 @@ export const useSessionStore = defineStore('session', () => {
     }
   }
 
-  function switchSession(id: number) {
+  function switchSession(id: number | null) {
     currentSessionId.value = id
   }
 

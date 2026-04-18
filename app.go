@@ -8,7 +8,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
+	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -39,7 +43,8 @@ type App struct {
 	mcpClient    *mcp.Client
 	llmClient    *llm.Client
 	cancelFuncs  sync.Map
-	toolManager  *tools.Manager
+	toolManager             *tools.Manager
+	wasMaxBeforeFullscreen  bool
 }
 
 func NewApp() *App {
@@ -75,12 +80,33 @@ func (a *App) startup(ctx context.Context) {
 
 	// Restore window position for non-maximised windows
 	// (Size and maximised state are already set via options in main.go)
-	if saved := loadWindowStateFromFile(); saved != nil && !saved.Maximised {
+	if saved := loadWindowStateFromFile(); saved != nil && !saved.Maximised && !saved.Fullscreen {
 		wailsRuntime.WindowSetPosition(ctx, saved.X, saved.Y)
 	}
 
 	// Connect to enabled MCP servers
 	go a.connectEnabledMCPServers()
+}
+
+func (a *App) ToggleFullscreen() {
+	if wailsRuntime.WindowIsFullscreen(a.ctx) {
+		wasMax := a.wasMaxBeforeFullscreen
+		wailsRuntime.WindowUnfullscreen(a.ctx)
+		if wasMax {
+			// UnFullscreen uses SetWindowPlacement which may not properly
+			// restore maximized state respecting the taskbar. Fix by
+			// un-maximizing then re-maximizing through proper Windows path.
+			go func() {
+				time.Sleep(200 * time.Millisecond)
+				wailsRuntime.WindowUnmaximise(a.ctx)
+				time.Sleep(100 * time.Millisecond)
+				wailsRuntime.WindowMaximise(a.ctx)
+			}()
+		}
+	} else {
+		a.wasMaxBeforeFullscreen = wailsRuntime.WindowIsMaximised(a.ctx)
+		wailsRuntime.WindowFullscreen(a.ctx)
+	}
 }
 
 func (a *App) connectEnabledMCPServers() {
@@ -273,6 +299,202 @@ func (a *App) GetSystemFonts() ([]string, error) {
 
 func (a *App) GetDefaultStyles() string {
 	return db.DefaultStyles()
+}
+
+// --- Theme Methods ---
+
+// ThemeInfo describes a theme available for selection.
+type ThemeInfo struct {
+	Name      string `json:"name"`
+	IsDefault bool   `json:"isDefault"`
+	CSS       string `json:"css"`
+}
+
+// GetThemes returns all available themes (built-in Default + custom from themes folder).
+func (a *App) GetThemes() ([]ThemeInfo, error) {
+	var result []ThemeInfo
+
+	// Always include the built-in Default theme
+	result = append(result, ThemeInfo{
+		Name:      "Default",
+		IsDefault: true,
+		CSS:       db.DefaultStyles(),
+	})
+
+	// Read custom themes from the themes directory
+	dataDir, err := db.DataDir()
+	if err != nil {
+		return result, nil // Return at least Default
+	}
+	themesDir := filepath.Join(dataDir, "themes")
+	os.MkdirAll(themesDir, 0755)
+
+	entries, err := os.ReadDir(themesDir)
+	if err != nil {
+		return result, nil
+	}
+
+	var customNames []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".css") {
+			continue
+		}
+		name := strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
+		if name == "Default" {
+			continue
+		}
+		customNames = append(customNames, name)
+	}
+	sort.Strings(customNames)
+
+	for _, name := range customNames {
+		data, err := os.ReadFile(filepath.Join(themesDir, name+".css"))
+		if err != nil {
+			continue
+		}
+		result = append(result, ThemeInfo{
+			Name:      name,
+			IsDefault: false,
+			CSS:       string(data),
+		})
+	}
+
+	return result, nil
+}
+
+// GetThemeCSS returns the CSS content for a given theme name.
+// For custom themes, relative url() paths are resolved to absolute file:// URLs.
+func (a *App) GetThemeCSS(themeName string) (string, error) {
+	if themeName == "" || themeName == "Default" {
+		return db.DefaultStyles(), nil
+	}
+
+	// Validate theme name — no path traversal
+	if strings.ContainsAny(themeName, `/\`) || strings.Contains(themeName, "..") {
+		return "", fmt.Errorf("invalid theme name: %s", themeName)
+	}
+
+	dataDir, err := db.DataDir()
+	if err != nil {
+		return "", err
+	}
+	themesDir := filepath.Join(dataDir, "themes")
+	cssPath := filepath.Join(themesDir, themeName+".css")
+
+	data, err := os.ReadFile(cssPath)
+	if err != nil {
+		return "", fmt.Errorf("read theme %s: %w", themeName, err)
+	}
+
+	css := string(data)
+	css = resolveThemeCSSPaths(css, themesDir, themeName)
+	return css, nil
+}
+
+// SaveThemeCSS writes CSS content to a theme file on disk.
+func (a *App) SaveThemeCSS(themeName string, css string) error {
+	if themeName == "" {
+		return fmt.Errorf("theme name cannot be empty")
+	}
+	if themeName == "Default" {
+		return fmt.Errorf("cannot overwrite the built-in Default theme")
+	}
+	// Validate: alphanumeric, hyphens, underscores only
+	validName := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+	if !validName.MatchString(themeName) {
+		return fmt.Errorf("theme name must contain only letters, numbers, hyphens, and underscores")
+	}
+	if len(themeName) > 64 {
+		return fmt.Errorf("theme name too long (max 64 characters)")
+	}
+
+	dataDir, err := db.DataDir()
+	if err != nil {
+		return err
+	}
+	themesDir := filepath.Join(dataDir, "themes")
+	if err := os.MkdirAll(themesDir, 0755); err != nil {
+		return fmt.Errorf("create themes dir: %w", err)
+	}
+
+	cssPath := filepath.Join(themesDir, themeName+".css")
+	if err := os.WriteFile(cssPath, []byte(css), 0644); err != nil {
+		return fmt.Errorf("write theme %s: %w", themeName, err)
+	}
+	return nil
+}
+
+// OpenThemeFolder opens the themes directory in the system file explorer.
+func (a *App) OpenThemeFolder() error {
+	dataDir, err := db.DataDir()
+	if err != nil {
+		return err
+	}
+	themesDir := filepath.Join(dataDir, "themes")
+	if err := os.MkdirAll(themesDir, 0755); err != nil {
+		return fmt.Errorf("create themes dir: %w", err)
+	}
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("explorer", themesDir)
+	case "darwin":
+		cmd = exec.Command("open", themesDir)
+	default:
+		cmd = exec.Command("xdg-open", themesDir)
+	}
+	return cmd.Start()
+}
+
+// resolveThemeCSSPaths rewrites relative url() and @import paths in CSS to absolute file:// URLs.
+// Resources are resolved relative to <themesDir>/<themeName>/ subdirectory.
+func resolveThemeCSSPaths(css string, themesDir string, themeName string) string {
+	resourceDir := filepath.Join(themesDir, themeName)
+	absResourceDir := filepath.ToSlash(resourceDir)
+
+	// Resolve url() references
+	urlRe := regexp.MustCompile(`url\(\s*["']?([^"')]+?)["']?\s*\)`)
+	css = urlRe.ReplaceAllStringFunc(css, func(match string) string {
+		sub := urlRe.FindStringSubmatch(match)
+		if len(sub) < 2 {
+			return match
+		}
+		path := sub[1]
+		if isAbsoluteURL(path) {
+			return match
+		}
+		absPath := filepath.Join(absResourceDir, filepath.FromSlash(path))
+		absPath = filepath.ToSlash(absPath)
+		return `url("` + "file:///" + absPath + `")`
+	})
+
+	// Resolve @import with relative paths
+	importRe := regexp.MustCompile(`@import\s+["']([^"']+)["']`)
+	css = importRe.ReplaceAllStringFunc(css, func(match string) string {
+		sub := importRe.FindStringSubmatch(match)
+		if len(sub) < 2 {
+			return match
+		}
+		path := sub[1]
+		if isAbsoluteURL(path) {
+			return match
+		}
+		absPath := filepath.Join(absResourceDir, filepath.FromSlash(path))
+		absPath = filepath.ToSlash(absPath)
+		return `@import "` + "file:///" + absPath + `"`
+	})
+
+	return css
+}
+
+func isAbsoluteURL(s string) bool {
+	return strings.HasPrefix(s, "http://") ||
+		strings.HasPrefix(s, "https://") ||
+		strings.HasPrefix(s, "data:") ||
+		strings.HasPrefix(s, "file://") ||
+		strings.HasPrefix(s, "/") ||
+		strings.HasPrefix(s, "#")
 }
 
 // OpenFileDialog opens a native file dialog for selecting an image file.

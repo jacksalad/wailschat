@@ -9,6 +9,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 - GitHub Actions CI/CD for automatic multi-platform builds
 
+## [v1.1.0] - 2026-04-18
+
+### Added
+- F11 fullscreen toggle support
+- Scroll-to-top button for chat sessions
+
+### Changed
+- Software interaction and UX improvements
+- Mermaid diagram rendering performance optimization
+- Theme switching management settings with local persistence
+
 ## [v1.0.0] - Initial Release
 
 ### Added

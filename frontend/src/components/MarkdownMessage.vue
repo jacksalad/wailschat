@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import {computed, ref, watch, onMounted, nextTick} from 'vue'
+import {computed, ref, watch, onMounted, nextTick, onBeforeUnmount} from 'vue'
 import {renderMarkdown} from '../utils/markdown'
 import mermaid from 'mermaid'
 
@@ -11,8 +11,12 @@ mermaid.initialize({
   fontFamily: 'inherit',
 })
 
+// Module-level SVG cache: keyed by preprocessed mermaid code → rendered SVG string
+const mermaidSvgCache = new Map<string, string>()
+
 const props = defineProps<{
   content: string
+  streaming?: boolean
 }>()
 
 const copiedIndex = ref(-1)
@@ -23,6 +27,25 @@ let mermaidIdCounter = 0
 const renderedMermaidBlocks = ref<Set<HTMLElement>>(new Set())
 
 const rendered = computed(() => renderMarkdown(props.content))
+
+// Debounced rendering for streaming: coalesce multiple chunks into single renders
+const debouncedRendered = ref('')
+let renderTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(rendered, (newHtml) => {
+  if (props.streaming) {
+    if (renderTimer) clearTimeout(renderTimer)
+    renderTimer = setTimeout(() => {
+      debouncedRendered.value = newHtml
+    }, 80)
+  } else {
+    debouncedRendered.value = newHtml
+  }
+}, { immediate: true })
+
+onBeforeUnmount(() => {
+  if (renderTimer) clearTimeout(renderTimer)
+})
 
 // Check if text contains non-ASCII characters (Chinese, etc.)
 function hasNonAscii(text: string): boolean {
@@ -66,56 +89,75 @@ function preprocessMermaidCode(code: string): string {
   return fixed
 }
 
+// Shared SVG icons
+const copyIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`
+const codeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`
+
+// Apply a rendered SVG to a mermaid block (shared between cached and fresh paths)
+function applyRenderedSvg(block: HTMLElement, svg: string) {
+  const originalContent = block.querySelector('.code-header')?.nextElementSibling?.outerHTML || ''
+  block.dataset.originalContent = originalContent
+
+  // Create a container for the rendered diagram
+  const wrapper = document.createElement('div')
+  wrapper.className = 'mermaid-rendered'
+  wrapper.innerHTML = svg
+
+  // Add interactive container for zoom/pan
+  const interactiveWrapper = document.createElement('div')
+  interactiveWrapper.className = 'mermaid-interactive'
+  interactiveWrapper.appendChild(wrapper)
+
+  // Replace the original block content
+  block.innerHTML = ''
+  block.appendChild(interactiveWrapper)
+
+  // Restore header with CODE button to switch back to code view
+  const header = document.createElement('div')
+  header.className = 'code-header'
+  header.innerHTML = `
+    <span class="code-lang">mermaid</span>
+    <div class="code-actions">
+      <button class="code-btn copy-btn" data-action="copy" title="Copy code">${copyIconSvg}</button>
+      <button class="code-btn run-btn" data-action="toggle-mermaid" title="Show code">${codeIconSvg}</button>
+    </div>
+  `
+  block.insertBefore(header, block.firstChild)
+  block.classList.add('rendered')
+
+  // Add wheel zoom and drag functionality
+  setupMermaidInteraction(interactiveWrapper)
+
+  renderedMermaidBlocks.value.add(block)
+}
+
 // Render a single mermaid block
 async function renderMermaidBlock(block: HTMLElement, isAutoRender = false): Promise<boolean> {
   const rawB64 = block.dataset.raw || ''
   const code = decodeURIComponent(escape(atob(rawB64)))
-  const id = `mermaid-${++mermaidIdCounter}-${Date.now()}`
 
   // Preprocess code to fix Chinese text
   const preprocessedCode = preprocessMermaidCode(code.trim())
 
+  // Check cache first
+  const cachedSvg = mermaidSvgCache.get(preprocessedCode)
+  if (cachedSvg) {
+    applyRenderedSvg(block, cachedSvg)
+    return true
+  }
+
+  const id = `mermaid-${++mermaidIdCounter}-${Date.now()}`
+
   try {
     const { svg } = await mermaid.render(id, preprocessedCode)
-    // Store original code content before replacing
-    const originalContent = block.querySelector('.code-header')?.nextElementSibling?.outerHTML || ''
-    block.dataset.originalContent = originalContent
+
+    // Store in cache
+    mermaidSvgCache.set(preprocessedCode, svg)
+
     // Store preprocessed code for retry
     block.dataset.preprocessedCode = preprocessedCode
 
-    // Create a container for the rendered diagram
-    const wrapper = document.createElement('div')
-    wrapper.className = 'mermaid-rendered'
-    wrapper.innerHTML = svg
-
-    // Add interactive container for zoom/pan
-    const interactiveWrapper = document.createElement('div')
-    interactiveWrapper.className = 'mermaid-interactive'
-    interactiveWrapper.appendChild(wrapper)
-
-    // Replace the original block content
-    block.innerHTML = ''
-    block.appendChild(interactiveWrapper)
-
-    // Restore header with CODE button to switch back to code view
-    const copyIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`
-    const codeIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`
-    const header = document.createElement('div')
-    header.className = 'code-header'
-    header.innerHTML = `
-      <span class="code-lang">mermaid</span>
-      <div class="code-actions">
-        <button class="code-btn copy-btn" data-action="copy" title="Copy code">${copyIcon}</button>
-        <button class="code-btn run-btn" data-action="toggle-mermaid" title="Show code">${codeIcon}</button>
-      </div>
-    `
-    block.insertBefore(header, block.firstChild)
-    block.classList.add('rendered')
-
-    // Add wheel zoom and drag functionality
-    setupMermaidInteraction(interactiveWrapper)
-
-    renderedMermaidBlocks.value.add(block)
+    applyRenderedSvg(block, svg)
     return true
   } catch (e) {
     console.error('Mermaid render error:', e)
@@ -156,8 +198,7 @@ async function renderMermaidBlock(block: HTMLElement, isAutoRender = false): Pro
       runBtn.className = 'code-btn run-btn'
       runBtn.dataset.action = 'run-mermaid'
       runBtn.title = 'Toggle diagram'
-      const codeIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`
-      runBtn.innerHTML = codeIcon
+      runBtn.innerHTML = codeIconSvg
       actionsDiv.appendChild(runBtn)
     }
 
@@ -180,15 +221,13 @@ async function toggleMermaidBlock(block: HTMLElement) {
 
     // Restore the code block with COPY and RUN buttons (no CODE button needed)
     block.innerHTML = ''
-    const copyIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`
-    const codeIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`
     const header = document.createElement('div')
     header.className = 'code-header'
     header.innerHTML = `
       <span class="code-lang">mermaid</span>
       <div class="code-actions">
-        <button class="code-btn copy-btn" data-action="copy" title="Copy code">${copyIcon}</button>
-        <button class="code-btn run-btn" data-action="toggle-mermaid" title="Toggle diagram">${codeIcon}</button>
+        <button class="code-btn copy-btn" data-action="copy" title="Copy code">${copyIconSvg}</button>
+        <button class="code-btn run-btn" data-action="toggle-mermaid" title="Toggle diagram">${codeIconSvg}</button>
       </div>
     `
     block.appendChild(header)
@@ -281,28 +320,41 @@ function setupMermaidInteraction(container: HTMLElement) {
   container.style.cursor = 'grab'
 }
 
-// Render all mermaid blocks on initial load
+// Render all mermaid blocks in parallel
 async function renderMermaidBlocks() {
   if (!containerRef.value) return
 
-  const blocks = Array.from(containerRef.value.querySelectorAll('.code-block.mermaid-block[data-lang="mermaid"]'))
+  const blocks = Array.from(
+    containerRef.value.querySelectorAll('.code-block.mermaid-block[data-lang="mermaid"]')
+  ).filter(block => !renderedMermaidBlocks.value.has(block as HTMLElement)) as HTMLElement[]
 
-  for (const block of blocks) {
-    // Auto-render with error handling - don't modify block if it fails
-    await renderMermaidBlock(block as HTMLElement, true)
-  }
+  if (blocks.length === 0) return
+
+  await Promise.all(blocks.map(block => renderMermaidBlock(block, true)))
 }
 
-// Watch for rendered content changes
+// Watch for rendered content changes — skip mermaid during streaming
 watch(rendered, async () => {
   await nextTick()
+  if (props.streaming) return
   renderedMermaidBlocks.value.clear()
   await renderMermaidBlocks()
 })
 
+// When streaming ends, render all mermaid blocks
+watch(() => props.streaming, async (newVal, oldVal) => {
+  if (oldVal === true && newVal === false) {
+    await nextTick()
+    renderedMermaidBlocks.value.clear()
+    await renderMermaidBlocks()
+  }
+})
+
 onMounted(async () => {
   await nextTick()
-  await renderMermaidBlocks()
+  if (!props.streaming) {
+    await renderMermaidBlocks()
+  }
 })
 
 function handleAction(e: MouseEvent) {
@@ -351,5 +403,5 @@ function handleAction(e: MouseEvent) {
 </script>
 
 <template>
-  <div class="markdown-body" ref="containerRef" v-html="rendered" @click="handleAction"></div>
+  <div class="markdown-body" ref="containerRef" v-html="debouncedRendered" @click="handleAction"></div>
 </template>

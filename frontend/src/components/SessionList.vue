@@ -12,6 +12,10 @@ const dragIndex = ref<number | null>(null)
 const dropIndex = ref<number | null>(null)
 
 async function selectSession(id: number) {
+  if (sessionStore.currentSessionId === id) {
+    sessionStore.switchSession(null)
+    return
+  }
   sessionStore.switchSession(id)
   await messageStore.loadHistory(id)
 }
