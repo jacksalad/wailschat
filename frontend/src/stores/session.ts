@@ -14,6 +14,7 @@ export interface Session {
   provider_id: number
   name: string
   model: string
+  prompt_id: number | null
   created_at: string
   updated_at: string
 }
@@ -34,8 +35,9 @@ export const useSessionStore = defineStore('session', () => {
     }
   }
 
-  async function createSession(providerID: number, name: string, model: string): Promise<Session> {
-    const sess = await CreateSession(providerID, name, model) as Session
+  async function createSession(providerID: number, name: string, model: string, promptID?: number | null): Promise<Session> {
+    const pid = promptID !== undefined && promptID !== null ? promptID : null
+    const sess = await CreateSession(providerID, name, model, pid) as Session
     sessions.value.unshift(sess)
     currentSessionId.value = sess.id
     return sess
@@ -65,9 +67,16 @@ export const useSessionStore = defineStore('session', () => {
   async function updateSessionModel(sessionId: number, providerId: number, model: string) {
     const s = sessions.value.find(s => s.id === sessionId)
     if (!s) return
-    await UpdateSession(sessionId, providerId, s.name, model)
+    await UpdateSession(sessionId, providerId, s.name, model, s.prompt_id)
     s.provider_id = providerId
     s.model = model
+  }
+
+  async function updateSessionPrompt(sessionId: number, promptId: number | null) {
+    const s = sessions.value.find(s => s.id === sessionId)
+    if (!s) return
+    await UpdateSession(sessionId, s.provider_id, s.name, s.model, promptId)
+    s.prompt_id = promptId
   }
 
   // Move a session to the top of the local list (for UI responsiveness)
@@ -103,7 +112,7 @@ export const useSessionStore = defineStore('session', () => {
 
   return {
     sessions, currentSessionId, loading,
-    fetchSessions, createSession, deleteSession, switchSession, getCurrentSession, updateSessionName, updateSessionModel,
+    fetchSessions, createSession, deleteSession, switchSession, getCurrentSession, updateSessionName, updateSessionModel, updateSessionPrompt,
     moveToTop, reorderSessions,
   }
 })

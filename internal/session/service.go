@@ -17,8 +17,8 @@ func NewService(db *sql.DB) *Service {
 
 func (s *Service) Create(sess *model.Session) error {
 	result, err := s.db.Exec(
-		"INSERT INTO sessions (provider_id, name, model) VALUES (?, ?, ?)",
-		sess.ProviderID, sess.Name, sess.Model,
+		"INSERT INTO sessions (provider_id, name, model, prompt_id) VALUES (?, ?, ?, ?)",
+		sess.ProviderID, sess.Name, sess.Model, sess.PromptID,
 	)
 	if err != nil {
 		return fmt.Errorf("session: create: %w", err)
@@ -27,8 +27,21 @@ func (s *Service) Create(sess *model.Session) error {
 	return nil
 }
 
+func scanSession(row interface{ Scan(...any) error }) (*model.Session, error) {
+	var sess model.Session
+	var promptID sql.NullInt64
+	err := row.Scan(&sess.ID, &sess.ProviderID, &sess.Name, &sess.Model, &promptID, &sess.CreatedAt, &sess.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	if promptID.Valid {
+		sess.PromptID = &promptID.Int64
+	}
+	return &sess, nil
+}
+
 func (s *Service) GetAll() ([]model.Session, error) {
-	rows, err := s.db.Query("SELECT id, provider_id, name, model, created_at, updated_at FROM sessions ORDER BY sort_order DESC, updated_at DESC")
+	rows, err := s.db.Query("SELECT id, provider_id, name, model, prompt_id, created_at, updated_at FROM sessions ORDER BY sort_order DESC, updated_at DESC")
 	if err != nil {
 		return nil, fmt.Errorf("session: get all: %w", err)
 	}
@@ -36,30 +49,29 @@ func (s *Service) GetAll() ([]model.Session, error) {
 
 	var sessions []model.Session
 	for rows.Next() {
-		var sess model.Session
-		if err := rows.Scan(&sess.ID, &sess.ProviderID, &sess.Name, &sess.Model, &sess.CreatedAt, &sess.UpdatedAt); err != nil {
+		sess, err := scanSession(rows)
+		if err != nil {
 			return nil, fmt.Errorf("session: scan: %w", err)
 		}
-		sessions = append(sessions, sess)
+		sessions = append(sessions, *sess)
 	}
 	return sessions, rows.Err()
 }
 
 func (s *Service) GetByID(id int64) (*model.Session, error) {
-	var sess model.Session
-	err := s.db.QueryRow(
-		"SELECT id, provider_id, name, model, created_at, updated_at FROM sessions WHERE id = ?", id,
-	).Scan(&sess.ID, &sess.ProviderID, &sess.Name, &sess.Model, &sess.CreatedAt, &sess.UpdatedAt)
+	sess, err := scanSession(s.db.QueryRow(
+		"SELECT id, provider_id, name, model, prompt_id, created_at, updated_at FROM sessions WHERE id = ?", id,
+	))
 	if err != nil {
 		return nil, fmt.Errorf("session: get by id: %w", err)
 	}
-	return &sess, nil
+	return sess, nil
 }
 
 func (s *Service) Update(sess *model.Session) error {
 	_, err := s.db.Exec(
-		"UPDATE sessions SET provider_id=?, name=?, model=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-		sess.ProviderID, sess.Name, sess.Model, sess.ID,
+		"UPDATE sessions SET provider_id=?, name=?, model=?, prompt_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+		sess.ProviderID, sess.Name, sess.Model, sess.PromptID, sess.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("session: update: %w", err)

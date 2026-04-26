@@ -27,6 +27,7 @@ import (
 	"wailschat/internal/message"
 	"wailschat/internal/model"
 	"wailschat/internal/provider"
+	"wailschat/internal/prompt"
 	"wailschat/internal/session"
 	"wailschat/internal/settings"
 	"wailschat/internal/tools"
@@ -36,6 +37,7 @@ type App struct {
 	ctx          context.Context
 	db           *sql.DB
 	providerSvc  *provider.Service
+	promptSvc    *prompt.Service
 	sessionSvc   *session.Service
 	messageSvc   *message.Service
 	settingsSvc  *settings.Service
@@ -70,6 +72,7 @@ func (a *App) startup(ctx context.Context) {
 	}
 	a.db = database
 	a.providerSvc = provider.NewService(database)
+	a.promptSvc = prompt.NewService(database)
 	a.sessionSvc = session.NewService(database)
 	a.messageSvc = message.NewService(database)
 	a.settingsSvc = settings.NewService(database)
@@ -81,7 +84,14 @@ func (a *App) startup(ctx context.Context) {
 	// Restore window position for non-maximised windows
 	// (Size and maximised state are already set via options in main.go)
 	if saved := loadWindowStateFromFile(); saved != nil && !saved.Maximised && !saved.Fullscreen {
-		wailsRuntime.WindowSetPosition(ctx, saved.X, saved.Y)
+		if isWindowOffScreen(saved, 300) {
+			// Window edges exceed screen by >300px — reset to centred default
+			x, y, w, h := centerWindow()
+			wailsRuntime.WindowSetSize(ctx, w, h)
+			wailsRuntime.WindowSetPosition(ctx, x, y)
+		} else {
+			wailsRuntime.WindowSetPosition(ctx, saved.X, saved.Y)
+		}
 	}
 
 	// Connect to enabled MCP servers
@@ -246,13 +256,65 @@ func (a *App) GetModels(baseURL, apiKey string) ([]string, error) {
 	return a.llmClient.GetModels(baseURL, apiKey)
 }
 
+// --- Prompt Methods ---
+
+func (a *App) PromptList() ([]model.Prompt, error) {
+	return a.promptSvc.GetAll()
+}
+
+func (a *App) PromptCreate(p *model.Prompt) (*model.Prompt, error) {
+	if err := a.promptSvc.Create(p); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+func (a *App) PromptUpdate(p *model.Prompt) (*model.Prompt, error) {
+	if err := a.promptSvc.Update(p); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+func (a *App) PromptDelete(id int64) error {
+	return a.promptSvc.Delete(id)
+}
+
+func (a *App) PromptSetDefault(id int64) error {
+	return a.promptSvc.SetDefault(id)
+}
+
+// resolveSystemPrompt returns the system prompt content for a given session.
+// Priority: session-specific prompt > default prompt > legacy setting.
+func (a *App) resolveSystemPrompt(sessionID int64) string {
+	// Check if session has a specific prompt assigned
+	sess, err := a.sessionSvc.GetByID(sessionID)
+	if err == nil && sess.PromptID != nil && *sess.PromptID > 0 {
+		p, err := a.promptSvc.GetByID(*sess.PromptID)
+		if err == nil && p != nil {
+			return p.Content
+		}
+	}
+
+	// Fall back to the default prompt
+	p, err := a.promptSvc.GetDefault()
+	if err == nil && p != nil {
+		return p.Content
+	}
+
+	// Final fallback: legacy system_prompt setting
+	content, _ := a.settingsSvc.GetSystemPrompt()
+	return content
+}
+
 // --- Session Methods ---
 
-func (a *App) CreateSession(providerID int64, name, modelName string) (*model.Session, error) {
+func (a *App) CreateSession(providerID int64, name, modelName string, promptID *int64) (*model.Session, error) {
 	sess := &model.Session{
 		ProviderID: providerID,
 		Name:       name,
 		Model:      modelName,
+		PromptID:   promptID,
 	}
 	if err := a.sessionSvc.Create(sess); err != nil {
 		return nil, err
@@ -264,12 +326,13 @@ func (a *App) GetSessions() ([]model.Session, error) {
 	return a.sessionSvc.GetAll()
 }
 
-func (a *App) UpdateSession(id int64, providerID int64, name, modelName string) error {
+func (a *App) UpdateSession(id int64, providerID int64, name, modelName string, promptID *int64) error {
 	sess := &model.Session{
 		ID:         id,
 		ProviderID: providerID,
 		Name:       name,
 		Model:      modelName,
+		PromptID:   promptID,
 	}
 	return a.sessionSvc.Update(sess)
 }
@@ -592,8 +655,8 @@ func (a *App) SendMessage(sessionID int64, content string, images []string) (str
 		return "", fmt.Errorf("send message: get history: %w", err)
 	}
 
-	// Load system prompt once (optimization: avoid GetAll() query)
-	systemPrompt, _ := a.settingsSvc.GetSystemPrompt()
+	// Resolve system prompt for this session
+	systemPrompt := a.resolveSystemPrompt(sessionID)
 	chatMsgs := buildChatMessages(history, systemPrompt)
 
 	// Set up cancellation - generous timeout for reasoning models that can think for many minutes.
@@ -642,8 +705,8 @@ func (a *App) RetryMessage(sessionID int64, messageID string) error {
 		return fmt.Errorf("retry: get history: %w", err)
 	}
 
-	// Load system prompt once (optimization: avoid GetAll() query)
-	systemPrompt, _ := a.settingsSvc.GetSystemPrompt()
+	// Resolve system prompt for this session
+	systemPrompt := a.resolveSystemPrompt(sessionID)
 	chatMsgs := buildChatMessages(history, systemPrompt)
 
 	// Set up cancellation - generous timeout for reasoning models
@@ -728,7 +791,7 @@ func (a *App) RetryFromUserMessage(sessionID int64, messageID string) (string, e
 		return "", fmt.Errorf("retry from user: get history: %w", err)
 	}
 
-	systemPrompt, _ := a.settingsSvc.GetSystemPrompt()
+	systemPrompt := a.resolveSystemPrompt(sessionID)
 	chatMsgs := buildChatMessages(remainingHistory, systemPrompt)
 
 	// Set up cancellation - generous timeout for reasoning models
@@ -762,6 +825,7 @@ func (a *App) streamAndSave(
 	chatMsgs []model.ChatMessage,
 ) {
 	var fullContent strings.Builder
+	var fullReasoning strings.Builder
 	// 预分配容量：典型响应约 1-4KB，避免频繁扩容
 	fullContent.Grow(4096)
 	maxToolCalls := 10 // Limit tool call iterations
@@ -784,8 +848,11 @@ func (a *App) streamAndSave(
 	var allToolResults []*model.ToolCallResult     // all tool results received
 
 	stats, err := a.llmClient.StreamChat(ctx, p.BaseURL, p.APIKey, sess.Model, chatMsgs,
-		func(chunk string, newToolCalls []model.ToolCall, finishReason string) {
+		func(chunk string, reasoningChunk string, newToolCalls []model.ToolCall, finishReason string) {
 			fullContent.WriteString(chunk)
+			if reasoningChunk != "" {
+				fullReasoning.WriteString(reasoningChunk)
+			}
 
 			// Collect tool calls (now they come pre-accumulated)
 			for _, tc := range newToolCalls {
@@ -794,7 +861,12 @@ func (a *App) streamAndSave(
 				}
 			}
 
-			wailsRuntime.EventsEmit(a.ctx, "message_chunk", sessionID, chunk)
+			if chunk != "" {
+				wailsRuntime.EventsEmit(a.ctx, "message_chunk", sessionID, chunk)
+			}
+			if reasoningChunk != "" {
+				wailsRuntime.EventsEmit(a.ctx, "message_reasoning", sessionID, reasoningChunk)
+			}
 		}, tools)
 
 	if err != nil {
@@ -911,18 +983,27 @@ func (a *App) streamAndSave(
 
 		// Reset for next iteration
 		fullContent.Reset()
+		fullReasoning.Reset()
 		toolCallMap = make(map[string]model.ToolCall)
 
 		// Continue streaming with tool results
 		stats, err = a.llmClient.StreamChat(ctx, p.BaseURL, p.APIKey, sess.Model, chatMsgs,
-			func(chunk string, newToolCalls []model.ToolCall, finishReason string) {
+			func(chunk string, reasoningChunk string, newToolCalls []model.ToolCall, finishReason string) {
 				fullContent.WriteString(chunk)
+				if reasoningChunk != "" {
+					fullReasoning.WriteString(reasoningChunk)
+				}
 				for _, tc := range newToolCalls {
 					if tc.ID != "" {
 						toolCallMap[tc.ID] = tc
 					}
 				}
-				wailsRuntime.EventsEmit(a.ctx, "message_chunk", sessionID, chunk)
+				if chunk != "" {
+					wailsRuntime.EventsEmit(a.ctx, "message_chunk", sessionID, chunk)
+				}
+				if reasoningChunk != "" {
+					wailsRuntime.EventsEmit(a.ctx, "message_reasoning", sessionID, reasoningChunk)
+				}
 			}, tools)
 
 		if err != nil {
@@ -975,13 +1056,14 @@ func (a *App) streamAndSave(
 
 	// Save assistant message with tool calls and results
 	assistantMsg := &model.Message{
-		SessionID:       sessionID,
-		Role:            "assistant",
-		Content:         fullContent.String(),
-		Images:          "[]",
-		StatsJSON:       statsJSON,
-		ToolCallsJSON:   toolCallsJSON,
-		ToolResultsJSON: toolResultsJSON,
+		SessionID:        sessionID,
+		Role:             "assistant",
+		Content:          fullContent.String(),
+		ReasoningContent: fullReasoning.String(),
+		Images:           "[]",
+		StatsJSON:        statsJSON,
+		ToolCallsJSON:    toolCallsJSON,
+		ToolResultsJSON:  toolResultsJSON,
 	}
 	if saveErr := a.messageSvc.Create(assistantMsg); saveErr != nil {
 		log.Printf("Failed to save assistant message: %v", saveErr)
@@ -1197,9 +1279,9 @@ func buildChatMessages(history []model.Message, systemPrompt string) []model.Cha
 					},
 				})
 			}
-			chatMsgs = append(chatMsgs, model.ChatMessage{Role: m.Role, Content: contentArray})
+			chatMsgs = append(chatMsgs, model.ChatMessage{Role: m.Role, Content: contentArray, ReasoningContent: m.ReasoningContent})
 		} else {
-			chatMsgs = append(chatMsgs, model.ChatMessage{Role: m.Role, Content: m.Content})
+			chatMsgs = append(chatMsgs, model.ChatMessage{Role: m.Role, Content: m.Content, ReasoningContent: m.ReasoningContent})
 		}
 	}
 

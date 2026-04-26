@@ -580,6 +580,32 @@ INSERT OR IGNORE INTO settings (key, value) VALUES ('selected_theme', 'Default')
 UPDATE schema_version SET version = 19;
 `
 
+const schemaV20 = `
+-- Migration: Add reasoning_content column for reasoning models like DeepSeek R1
+ALTER TABLE messages ADD COLUMN reasoning_content TEXT DEFAULT '';
+UPDATE schema_version SET version = 20;
+`
+
+const schemaV21 = `
+-- Migration: Add prompts table for multi-prompt management
+CREATE TABLE IF NOT EXISTS prompts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    content TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT '',
+    is_default INTEGER NOT NULL DEFAULT 0,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+ALTER TABLE sessions ADD COLUMN prompt_id INTEGER DEFAULT NULL REFERENCES prompts(id) ON DELETE SET NULL;
+-- Migrate existing system_prompt setting into prompts table as the default entry
+INSERT INTO prompts (name, content, category, is_default, sort_order)
+SELECT 'Default', value, '', 1, 1
+FROM settings WHERE key = 'system_prompt';
+UPDATE schema_version SET version = 21;
+`
+
 // Init opens the SQLite database and runs migrations.
 func Init() (*sql.DB, error) {
 	configDir, err := os.UserConfigDir()
@@ -710,6 +736,14 @@ func migrate(db *sql.DB) error {
 		// Migration v19: Add selected_theme setting for theme selector
 		db.Exec(schemaV19)
 	}
+	if version < 20 {
+		// Migration v20: Add reasoning_content column for reasoning models
+		db.Exec(schemaV20)
+	}
+		if version < 21 {
+			// Migration v21: Add prompts table for multi-prompt management
+			db.Exec(schemaV21)
+		}
 	return nil
 }
 

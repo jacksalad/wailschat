@@ -1,3 +1,5 @@
+//go:build windows
+
 package tools
 
 import (
@@ -5,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
-	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -19,8 +20,8 @@ type ShellExec struct {
 
 // Default and max timeouts
 const (
-	DefaultTimeout = 5 * time.Minute  // 5 minutes default - enough for most commands
-	MaxTimeout     = 30 * time.Minute // 30 minutes max - allows npm install, gcc编译等
+	DefaultTimeout = 5 * time.Minute
+	MaxTimeout     = 30 * time.Minute
 )
 
 // NewShellExec creates a new shell_exec tool
@@ -69,13 +70,11 @@ func (t *ShellExec) Execute(args map[string]any) (string, error) {
 		return "", fmt.Errorf("command parameter is required and must be a string")
 	}
 
-	// Trim whitespace
 	commandStr = strings.TrimSpace(commandStr)
 	if commandStr == "" {
 		return "", fmt.Errorf("command cannot be empty")
 	}
 
-	// Parse the command to get the executable name
 	parts := strings.Fields(commandStr)
 	if len(parts) == 0 {
 		return "", fmt.Errorf("invalid command")
@@ -83,42 +82,27 @@ func (t *ShellExec) Execute(args map[string]any) (string, error) {
 
 	executable := parts[0]
 
-	// Check if command is blacklisted
 	if t.manager.IsCommandBlacklisted(executable) {
 		return "", fmt.Errorf("command '%s' is not allowed for security reasons", executable)
 	}
 
-	// Get timeout from args or use default
 	timeout := t.timeout
 	if to, ok := args["timeout"].(float64); ok {
 		customTimeout := time.Duration(to) * time.Second
-		// Enforce min 10 seconds and max 30 minutes
 		if customTimeout >= 10*time.Second && customTimeout <= MaxTimeout {
 			timeout = customTimeout
 		}
 	}
 
-	// Get working directory from args (optional)
 	workingDir := ""
 	if wd, ok := args["working_dir"].(string); ok {
 		workingDir = strings.TrimSpace(wd)
 	}
 
-	// Execute based on OS
 	startTime := time.Now()
-	var output []byte
-	var err error
-
-	switch runtime.GOOS {
-	case "windows":
-		output, err = t.executeWindows(commandStr, workingDir, timeout)
-	default:
-		output, err = t.executeUnix(commandStr, workingDir, timeout)
-	}
-
+	output, err := t.executeWindows(commandStr, workingDir, timeout)
 	duration := time.Since(startTime)
 
-	// Build result
 	result := fmt.Sprintf("Command: %s\nDuration: %v\nExit code: ", commandStr, duration.Round(time.Millisecond))
 
 	if err != nil {
@@ -136,46 +120,21 @@ func (t *ShellExec) Execute(args map[string]any) (string, error) {
 	return result, nil
 }
 
-// executeUnix executes a command on Unix-like systems (Linux, macOS)
-func (t *ShellExec) executeUnix(commandStr string, workingDir string, timeout time.Duration) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	var cmd *exec.Cmd
-	if runtime.GOOS == "darwin" {
-		cmd = exec.CommandContext(ctx, "bash", "-c", commandStr)
-	} else {
-		cmd = exec.CommandContext(ctx, "sh", "-c", commandStr)
-	}
-
-	// Set working directory if specified
-	if workingDir != "" {
-		cmd.Dir = workingDir
-	}
-
-	return cmd.CombinedOutput()
-}
-
 // executeWindows executes a command on Windows without showing a console window
 func (t *ShellExec) executeWindows(commandStr string, workingDir string, timeout time.Duration) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	// Use cmd /c to run the command - this is the standard way on Windows
-	// The sysprocattr below will hide any console window
 	cmd := exec.CommandContext(ctx, "cmd", "/c", commandStr)
 
-	// Set process attributes to hide the window on Windows
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow: true,
 	}
 
-	// Set working directory if specified
 	if workingDir != "" {
 		cmd.Dir = workingDir
 	}
 
-	// Try to run and capture output
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return output, err

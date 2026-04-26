@@ -3,6 +3,7 @@ import {computed, watch, nextTick, ref, onMounted, onBeforeUnmount} from 'vue'
 import {useSessionStore} from '../stores/session'
 import {useMessageStore, type PerformanceStats} from '../stores/message'
 import {useProviderStore} from '../stores/provider'
+import {usePromptStore} from '../stores/prompt'
 import {useSettingsStore} from '../stores/settings'
 import {Loader2, ChevronUp, ChevronDown, ArrowUp} from 'lucide-vue-next'
 import {OnFileDrop, OnFileDropOff} from '../../wailsjs/runtime/runtime'
@@ -13,10 +14,13 @@ import logoUrl from '../assets/logo.png'
 const sessionStore = useSessionStore()
 const messageStore = useMessageStore()
 const providerStore = useProviderStore()
+const promptStore = usePromptStore()
 const settingsStore = useSettingsStore()
 const messagesContainer = ref<HTMLElement | null>(null)
 const showModelPicker = ref(false)
+const showPromptPicker = ref(false)
 const modelPickerRef = ref<HTMLElement | null>(null)
+const promptPickerRef = ref<HTMLElement | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
 const isDragOver = ref(false)
 
@@ -50,6 +54,32 @@ function onClickOutside(e: MouseEvent) {
   if (modelPickerRef.value && !modelPickerRef.value.contains(e.target as Node)) {
     showModelPicker.value = false
   }
+  if (promptPickerRef.value && !promptPickerRef.value.contains(e.target as Node)) {
+    showPromptPicker.value = false
+  }
+}
+
+// Prompt picker helpers
+const currentPromptName = computed(() => {
+  const sess = currentSession.value
+  if (!sess) return 'Default'
+  if (sess.prompt_id) {
+    const p = promptStore.getByID(sess.prompt_id)
+    return p ? p.name : 'Default'
+  }
+  const def = promptStore.getDefault()
+  return def ? def.name : 'Default'
+})
+
+function togglePromptPicker() {
+  showPromptPicker.value = !showPromptPicker.value
+}
+
+async function selectPrompt(promptId: number | null) {
+  const sid = sessionStore.currentSessionId
+  if (!sid) return
+  await sessionStore.updateSessionPrompt(sid, promptId)
+  showPromptPicker.value = false
 }
 
 onMounted(() => {
@@ -301,6 +331,36 @@ async function retryFromUser(messageId: string) {
           </template>
         </div>
       </div>
+      <div v-if="currentProvider && promptStore.prompts.length > 0" class="prompt-picker relative" ref="promptPickerRef">
+        <button
+          @click.stop="togglePromptPicker"
+          class="text-xs px-2 py-1 bg-slate-100 dark:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors flex items-center gap-1"
+        >
+          {{ currentPromptName }}
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div v-if="showPromptPicker" class="absolute top-full left-0 mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg z-50 min-w-[180px] max-h-[280px] overflow-y-auto py-1">
+          <button
+            @click="selectPrompt(null)"
+            :class="['w-full text-left px-3 py-1.5 text-sm hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors flex items-center justify-between',
+              !currentSession?.prompt_id ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-slate-700 dark:text-slate-300']"
+          >
+            <span>Use Default</span>
+            <svg v-if="!currentSession?.prompt_id" class="w-4 h-4 flex-shrink-0 ml-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+          </button>
+          <div v-if="promptStore.prompts.length > 0" class="border-t border-slate-200 dark:border-slate-600 my-1"></div>
+          <button
+            v-for="p in promptStore.prompts"
+            :key="p.id"
+            @click="selectPrompt(p.id)"
+            :class="['w-full text-left px-3 py-1.5 text-sm hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors flex items-center justify-between',
+              currentSession?.prompt_id === p.id ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-slate-700 dark:text-slate-300']"
+          >
+            <span class="truncate">{{ p.name }}<span v-if="p.is_default" class="text-slate-400 ml-1">(default)</span></span>
+            <svg v-if="currentSession?.prompt_id === p.id" class="w-4 h-4 flex-shrink-0 ml-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Messages area with navigation overlay -->
@@ -322,7 +382,7 @@ async function retryFromUser(messageId: string) {
         <div v-else class="messages-list mx-auto px-6 py-4 space-y-4" :style="{maxWidth: chatWidthPx}">
           <div v-for="(msg, index) in messages" :key="msg.id" :data-msg-index="index">
             <MessageBubble
-              v-memo="[msg.content, msg.images, msg.id === lastAssistantMessageId]"
+              v-memo="[msg.content, msg.images, msg.reasoning_content, msg.id === lastAssistantMessageId]"
               :message="msg"
               :stats="statsMap.get(msg.id)"
               :is-last-assistant="msg.id === lastAssistantMessageId"
@@ -332,7 +392,7 @@ async function retryFromUser(messageId: string) {
           </div>
           <!-- Streaming message -->
           <MessageBubble
-            v-if="messageStore.isStreaming && messageStore.streamingContent"
+            v-if="messageStore.isStreaming && (messageStore.streamingContent || messageStore.streamingReasoning)"
             :message="{
               id: 'streaming',
               session_id: sessionStore.currentSessionId!,
@@ -341,9 +401,10 @@ async function retryFromUser(messageId: string) {
               created_at: '',
             }"
             :streaming="true"
+            :streaming-reasoning="messageStore.streamingReasoning"
           />
-          <!-- Loading indicator -->
-          <div v-if="messageStore.isStreaming && !messageStore.streamingContent" class="loading-indicator flex justify-start">
+          <!-- Loading indicator (no content and no reasoning yet) -->
+          <div v-if="messageStore.isStreaming && !messageStore.streamingContent && !messageStore.streamingReasoning" class="loading-indicator flex justify-start">
             <div class="thinking-bubble bg-slate-100 dark:bg-slate-700 rounded-2xl px-4 py-3 text-slate-500 dark:text-slate-400">
               <span class="animate-pulse">Thinking...</span>
             </div>

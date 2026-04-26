@@ -140,6 +140,7 @@ export namespace model {
 	    session_id: number;
 	    role: string;
 	    content: string;
+	    reasoning_content: string;
 	    images: string;
 	    stats: string;
 	    tool_calls: string;
@@ -157,11 +158,58 @@ export namespace model {
 	        this.session_id = source["session_id"];
 	        this.role = source["role"];
 	        this.content = source["content"];
+	        this.reasoning_content = source["reasoning_content"];
 	        this.images = source["images"];
 	        this.stats = source["stats"];
 	        this.tool_calls = source["tool_calls"];
 	        this.tool_results = source["tool_results"];
 	        this.created_at = this.convertValues(source["created_at"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Prompt {
+	    id: number;
+	    name: string;
+	    content: string;
+	    category: string;
+	    is_default: boolean;
+	    sort_order: number;
+	    // Go type: time
+	    created_at: any;
+	    // Go type: time
+	    updated_at: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new Prompt(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.content = source["content"];
+	        this.category = source["category"];
+	        this.is_default = source["is_default"];
+	        this.sort_order = source["sort_order"];
+	        this.created_at = this.convertValues(source["created_at"], null);
+	        this.updated_at = this.convertValues(source["updated_at"], null);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -230,6 +278,7 @@ export namespace model {
 	    provider_id: number;
 	    name: string;
 	    model: string;
+	    prompt_id?: number;
 	    // Go type: time
 	    created_at: any;
 	    // Go type: time
@@ -245,6 +294,7 @@ export namespace model {
 	        this.provider_id = source["provider_id"];
 	        this.name = source["name"];
 	        this.model = source["model"];
+	        this.prompt_id = source["prompt_id"];
 	        this.created_at = this.convertValues(source["created_at"], null);
 	        this.updated_at = this.convertValues(source["updated_at"], null);
 	    }

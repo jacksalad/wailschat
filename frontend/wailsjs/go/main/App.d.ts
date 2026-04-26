@@ -13,7 +13,7 @@ export function ClearSessionMessages(arg1:number):Promise<void>;
 
 export function ConnectMCPServerFromConfig(arg1:model.MCPServer):Promise<void>;
 
-export function CreateSession(arg1:number,arg2:string,arg3:string):Promise<model.Session>;
+export function CreateSession(arg1:number,arg2:string,arg3:string,arg4:any):Promise<model.Session>;
 
 export function DeleteProvider(arg1:number):Promise<void>;
 
@@ -63,6 +63,16 @@ export function OpenFileDialog():Promise<string>;
 
 export function OpenThemeFolder():Promise<void>;
 
+export function PromptCreate(arg1:model.Prompt):Promise<model.Prompt>;
+
+export function PromptDelete(arg1:number):Promise<void>;
+
+export function PromptList():Promise<Array<model.Prompt>>;
+
+export function PromptSetDefault(arg1:number):Promise<void>;
+
+export function PromptUpdate(arg1:model.Prompt):Promise<model.Prompt>;
+
 export function ReadImageAsBase64(arg1:string):Promise<string>;
 
 export function ReorderSessions(arg1:Array<number>):Promise<void>;
@@ -83,4 +93,4 @@ export function ToggleFullscreen():Promise<void>;
 
 export function UpdateProvider(arg1:number,arg2:string,arg3:string,arg4:string,arg5:Array<string>,arg6:boolean):Promise<void>;
 
-export function UpdateSession(arg1:number,arg2:number,arg3:string,arg4:string):Promise<void>;
+export function UpdateSession(arg1:number,arg2:number,arg3:string,arg4:string,arg5:any):Promise<void>;

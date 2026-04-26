@@ -31,14 +31,14 @@ func (s *Service) initStatements() {
 	var err error
 
 	s.stmts.create, err = s.db.Prepare(
-		"INSERT INTO messages (session_id, role, content, images, stats, tool_calls, tool_results) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		"INSERT INTO messages (session_id, role, content, reasoning_content, images, stats, tool_calls, tool_results) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 	)
 	if err != nil {
 		panic("failed to prepare message create statement: " + err.Error())
 	}
 
 	s.stmts.getBySession, err = s.db.Prepare(
-		"SELECT id, session_id, role, content, images, stats, tool_calls, tool_results, created_at FROM messages WHERE session_id = ? ORDER BY created_at ASC",
+		"SELECT id, session_id, role, content, reasoning_content, images, stats, tool_calls, tool_results, created_at FROM messages WHERE session_id = ? ORDER BY created_at ASC",
 	)
 	if err != nil {
 		panic("failed to prepare message get statement: " + err.Error())
@@ -77,7 +77,7 @@ func (s *Service) Create(m *model.Message) error {
 	s.stmts.Lock()
 	defer s.stmts.Unlock()
 	result, err := s.stmts.create.Exec(
-		m.SessionID, m.Role, m.Content, m.Images, m.StatsJSON, m.ToolCallsJSON, m.ToolResultsJSON,
+		m.SessionID, m.Role, m.Content, m.ReasoningContent, m.Images, m.StatsJSON, m.ToolCallsJSON, m.ToolResultsJSON,
 	)
 	if err != nil {
 		return fmt.Errorf("message: create: %w", err)
@@ -98,7 +98,7 @@ func (s *Service) GetBySession(sessionID int64) ([]model.Message, error) {
 	var messages []model.Message
 	for rows.Next() {
 		var m model.Message
-		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content, &m.Images, &m.StatsJSON, &m.ToolCallsJSON, &m.ToolResultsJSON, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content, &m.ReasoningContent, &m.Images, &m.StatsJSON, &m.ToolCallsJSON, &m.ToolResultsJSON, &m.CreatedAt); err != nil {
 			return nil, fmt.Errorf("message: scan: %w", err)
 		}
 		messages = append(messages, m)

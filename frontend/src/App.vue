@@ -4,12 +4,14 @@ import Sidebar from './components/Sidebar.vue'
 import ChatWindow from './components/ChatWindow.vue'
 import {useProviderStore} from './stores/provider'
 import {useSessionStore} from './stores/session'
+import {usePromptStore} from './stores/prompt'
 import {useSettingsStore} from './stores/settings'
 import {useMessageStore} from './stores/message'
 import {ToggleFullscreen} from '../wailsjs/go/main/App'
 
 const providerStore = useProviderStore()
 const sessionStore = useSessionStore()
+const promptStore = usePromptStore()
 const settingsStore = useSettingsStore()
 const messageStore = useMessageStore()
 
@@ -115,6 +117,7 @@ onMounted(async () => {
     await Promise.all([
       providerStore.fetchProviders(),
       sessionStore.fetchSessions(),
+      promptStore.fetchPrompts(),
     ])
     // Preload system fonts in background for Settings font picker
     settingsStore.loadSystemFonts()

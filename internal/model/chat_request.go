@@ -25,11 +25,12 @@ type ChatContent interface{}
 // ChatMessage represents a single message in the chat completion request.
 // Content can be a string (for text-only) or an array of ChatContent (for multimodal)
 type ChatMessage struct {
-	Role       string      `json:"role"`
-	Content    interface{} `json:"content"`
-	ToolCalls  []ToolCall  `json:"tool_calls,omitempty"`
-	Name       string      `json:"name,omitempty"`         // For tool role messages
-	ToolCallID string      `json:"tool_call_id,omitempty"` // For tool role messages
+	Role             string      `json:"role"`
+	Content          interface{} `json:"content"`
+	ReasoningContent string      `json:"reasoning_content,omitempty"` // For reasoning models like DeepSeek R1
+	ToolCalls        []ToolCall  `json:"tool_calls,omitempty"`
+	Name             string      `json:"name,omitempty"`         // For tool role messages
+	ToolCallID       string      `json:"tool_call_id,omitempty"` // For tool role messages
 }
 
 // Tool represents an OpenAI function tool definition.

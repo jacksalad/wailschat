@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import {computed, ref} from 'vue'
 import MarkdownMessage from './MarkdownMessage.vue'
-import {Copy, RefreshCw, BarChart3, Check, X, ChevronDown, ChevronRight, Loader2, Wrench, Folder, Terminal} from 'lucide-vue-next'
+import {Copy, RefreshCw, BarChart3, Check, X, ChevronDown, ChevronRight, Loader2, Wrench, Folder, Terminal, Brain} from 'lucide-vue-next'
 import type {PerformanceStats, MCPToolCall, MCPToolResult} from '../stores/message'
 
 const props = defineProps<{
@@ -10,12 +10,14 @@ const props = defineProps<{
     session_id: number
     role: string
     content: string
+    reasoning_content?: string
     images?: string
     created_at: string
     tool_calls?: MCPToolCall[]
     tool_results?: MCPToolResult[]
   }
   streaming?: boolean
+  streamingReasoning?: string
   stats?: PerformanceStats
   isLastAssistant?: boolean
 }>()
@@ -34,6 +36,31 @@ const images = computed(() => {
     return []
   }
 })
+
+// Reasoning content: from saved message or from streaming state
+const reasoningText = computed(() => {
+  return props.message.reasoning_content || props.streamingReasoning || ''
+})
+
+const hasReasoning = computed(() => reasoningText.value.length > 0)
+
+// Reasoning section state
+const showReasoning = ref(false)
+
+// Auto-expand reasoning during streaming, collapse when done
+// Default: collapsed for saved messages, expanded during streaming
+const reasoningExpanded = computed(() => {
+  if (props.streaming) return true
+  return showReasoning.value
+})
+
+// Format reasoning content length for display
+function formatReasoningLength(text: string): string {
+  const len = text.length
+  if (len < 1000) return `${len} chars`
+  if (len < 1000000) return `${(len / 1000).toFixed(1)}K chars`
+  return `${(len / 1000000).toFixed(1)}M chars`
+}
 
 // MCP tool calls state
 const showToolCalls = ref(false)
@@ -133,8 +160,27 @@ function formatResult(result: string): string {
       <!-- Text content -->
       <div v-if="isUser" class="message-content whitespace-pre-wrap">{{ message.content }}</div>
       <div v-else class="message-content-wrapper">
+        <!-- Reasoning section (collapsible) -->
+        <div v-if="hasReasoning" class="reasoning-section mb-3">
+          <button
+            @click="showReasoning = !showReasoning"
+            class="reasoning-toggle flex items-center gap-1.5 text-xs font-medium w-full text-left py-1.5 px-2 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-600/50 transition-colors"
+          >
+            <Brain class="w-3.5 h-3.5 text-violet-500 dark:text-violet-400" />
+            <span class="text-violet-600 dark:text-violet-400">
+              <template v-if="streaming && !message.content">Thinking</template>
+              <template v-else>Thought for {{ formatReasoningLength(reasoningText) }}</template>
+            </span>
+            <Loader2 v-if="streaming && !message.content" class="w-3 h-3 animate-spin text-violet-500 dark:text-violet-400" />
+            <component :is="reasoningExpanded ? ChevronDown : ChevronRight" class="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 ml-auto" />
+          </button>
+          <div v-if="reasoningExpanded" class="reasoning-content mt-1.5 pl-2 border-l-2 border-violet-300/50 dark:border-violet-600/50">
+            <div class="text-xs text-slate-500 dark:text-slate-400 italic whitespace-pre-wrap max-h-[300px] overflow-y-auto">{{ reasoningText }}</div>
+          </div>
+        </div>
+        <!-- Main content -->
         <MarkdownMessage :content="message.content" :streaming="streaming" class="message-content" />
-        <span v-if="streaming" class="typing-cursor-bar"></span>
+        <span v-if="streaming && message.content" class="typing-cursor-bar"></span>
       </div>
 
       <!-- Action buttons for user messages (bottom-right) -->

@@ -22,8 +22,8 @@ export function ConnectMCPServerFromConfig(arg1) {
   return window['go']['main']['App']['ConnectMCPServerFromConfig'](arg1);
 }
 
-export function CreateSession(arg1, arg2, arg3) {
-  return window['go']['main']['App']['CreateSession'](arg1, arg2, arg3);
+export function CreateSession(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['CreateSession'](arg1, arg2, arg3, arg4);
 }
 
 export function DeleteProvider(arg1) {
@@ -122,6 +122,26 @@ export function OpenThemeFolder() {
   return window['go']['main']['App']['OpenThemeFolder']();
 }
 
+export function PromptCreate(arg1) {
+  return window['go']['main']['App']['PromptCreate'](arg1);
+}
+
+export function PromptDelete(arg1) {
+  return window['go']['main']['App']['PromptDelete'](arg1);
+}
+
+export function PromptList() {
+  return window['go']['main']['App']['PromptList']();
+}
+
+export function PromptSetDefault(arg1) {
+  return window['go']['main']['App']['PromptSetDefault'](arg1);
+}
+
+export function PromptUpdate(arg1) {
+  return window['go']['main']['App']['PromptUpdate'](arg1);
+}
+
 export function ReadImageAsBase64(arg1) {
   return window['go']['main']['App']['ReadImageAsBase64'](arg1);
 }
@@ -162,6 +182,6 @@ export function UpdateProvider(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['UpdateProvider'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
-export function UpdateSession(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['UpdateSession'](arg1, arg2, arg3, arg4);
+export function UpdateSession(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['UpdateSession'](arg1, arg2, arg3, arg4, arg5);
 }

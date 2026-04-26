@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import {ref, onMounted, onBeforeUnmount, computed} from 'vue'
 import {useProviderStore, type Provider} from '../stores/provider'
+import {usePromptStore, type Prompt} from '../stores/prompt'
 import {useSettingsStore, type Theme, type ShortcutBindings} from '../stores/settings'
 import {GetModels, GetDefaultStyles, OpenFileDialog, GetThemes, GetThemeCSS, SaveThemeCSS, OpenThemeFolder} from '../../wailsjs/go/main/App'
 import {model} from '../../wailsjs/go/models'
@@ -9,6 +10,7 @@ import {Server, Settings2, MessageSquare, Palette, Keyboard, Plug} from 'lucide-
 const emit = defineEmits<{close: []}>()
 
 const providerStore = useProviderStore()
+const promptStore = usePromptStore()
 const settingsStore = useSettingsStore()
 
 const activeTab = ref<'general' | 'providers' | 'prompt' | 'styles' | 'shortcuts' | 'mcp'>('general')
@@ -88,9 +90,108 @@ function onFontClickOutside(e: MouseEvent) {
 onMounted(() => document.addEventListener('click', onFontClickOutside))
 onBeforeUnmount(() => document.removeEventListener('click', onFontClickOutside))
 
-// --- Prompt settings state ---
-const systemPrompt = ref(settingsStore.systemPrompt)
-const promptSaved = ref(false)
+// --- Prompt management state ---
+const promptList = ref<Prompt[]>([])
+const promptLoading = ref(false)
+const promptShowForm = ref(false)
+const promptEditingId = ref<number | null>(null)
+const promptName = ref('')
+const promptCategory = ref('')
+const promptContent = ref('')
+const promptIsDefault = ref(false)
+const promptSaving = ref(false)
+
+async function loadPrompts() {
+  // If store already has data from App.vue preload, use it directly (instant)
+  if (promptStore.prompts.length > 0) {
+    promptList.value = promptStore.prompts
+    return
+  }
+  promptLoading.value = true
+  try {
+    await promptStore.fetchPrompts()
+    promptList.value = promptStore.prompts
+  } catch (e) {
+    console.error('Failed to load prompts:', e)
+  } finally {
+    promptLoading.value = false
+  }
+}
+
+function openPromptAdd() {
+  promptEditingId.value = null
+  promptName.value = ''
+  promptCategory.value = ''
+  promptContent.value = ''
+  promptIsDefault.value = promptList.value.length === 0
+  promptShowForm.value = true
+}
+
+function openPromptEdit(p: Prompt) {
+  promptEditingId.value = p.id
+  promptName.value = p.name
+  promptCategory.value = p.category
+  promptContent.value = p.content
+  promptIsDefault.value = p.is_default
+  promptShowForm.value = true
+}
+
+async function savePromptItem() {
+  if (promptSaving.value || !promptName.value.trim() || !promptContent.value.trim()) return
+  promptSaving.value = true
+  try {
+    if (promptEditingId.value) {
+      const p = new model.Prompt({
+        id: promptEditingId.value,
+        name: promptName.value.trim(),
+        content: promptContent.value,
+        category: promptCategory.value.trim(),
+        is_default: promptIsDefault.value,
+        sort_order: 0,
+        created_at: '',
+        updated_at: '',
+      })
+      await promptStore.updatePrompt(p)
+    } else {
+      await promptStore.createPrompt({
+        name: promptName.value.trim(),
+        content: promptContent.value,
+        category: promptCategory.value.trim(),
+        is_default: promptIsDefault.value,
+      })
+    }
+    promptList.value = promptStore.prompts
+    promptShowForm.value = false
+  } catch (e) {
+    console.error('Failed to save prompt:', e)
+  } finally {
+    promptSaving.value = false
+  }
+}
+
+async function deletePromptItem(id: number) {
+  try {
+    await promptStore.deletePrompt(id)
+    promptList.value = promptStore.prompts
+  } catch (e) {
+    console.error('Failed to delete prompt:', e)
+  }
+}
+
+async function setPromptDefault(id: number) {
+  try {
+    await promptStore.setDefault(id)
+    promptList.value = promptStore.prompts
+  } catch (e) {
+    console.error('Failed to set default prompt:', e)
+  }
+}
+
+function truncateContent(content: string, maxLen = 100): string {
+  if (!content) return ''
+  const text = content.replace(/\n/g, ' ').trim()
+  return text.length > maxLen ? text.slice(0, maxLen) + '...' : text
+}
 
 // --- Styles settings state ---
 const stylesCSS = ref('')
@@ -531,9 +632,11 @@ async function testMCPServer() {
 }
 
 // Load MCP servers when component mounts
-onMounted(async () => {
-  await loadMCPServers()
-  await loadMCPServerStatuses()
+onMounted(() => {
+  // All three are independent — load in parallel
+  loadPrompts()
+  loadMCPServers()
+  loadMCPServerStatuses()
 })
 
 function formatShortcut(binding: string): string {
@@ -621,14 +724,6 @@ async function saveGeneral() {
 
   generalSaved.value = true
   setTimeout(() => { generalSaved.value = false }, 1000)
-}
-
-async function savePrompt() {
-  await settingsStore.saveSettings({
-    system_prompt: systemPrompt.value,
-  })
-  promptSaved.value = true
-  setTimeout(() => { promptSaved.value = false }, 2000)
 }
 
 async function saveShortcuts() {
@@ -1220,18 +1315,74 @@ async function remove(id: number) {
         <template v-if="activeTab === 'prompt'">
           <div class="space-y-3 h-full flex flex-col">
             <div class="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">
-              System prompt prepended to every conversation. This sets the AI's behavior and persona.
+              Manage system prompts for your AI conversations. Set one as default, or assign specific prompts to individual sessions.
             </div>
-            <textarea
-              v-model="systemPrompt"
-              placeholder="Default system prompt for all chats..."
-              class="flex-1 w-full px-3 py-2 bg-white dark:bg-slate-700 rounded-lg border border-slate-300 dark:border-slate-600 focus:border-blue-500 focus:outline-none resize-none text-slate-800 dark:text-white placeholder-slate-400 min-h-[350px]"
-            ></textarea>
-            <div class="flex justify-end flex-shrink-0">
-              <button @click="savePrompt" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors text-white">
-                {{ promptSaved ? 'Saved!' : 'Save' }}
-              </button>
+
+            <!-- Prompt list -->
+            <div v-if="!promptLoading && promptList.length > 0 && !promptShowForm" class="space-y-2 flex-1 overflow-y-auto">
+              <div
+                v-for="p in promptList"
+                :key="p.id"
+                class="flex items-start justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg"
+              >
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium text-slate-800 dark:text-white">{{ p.name }}</span>
+                    <span v-if="p.is_default" class="px-1.5 py-0.5 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded">Default</span>
+                    <span v-if="p.category" class="px-1.5 py-0.5 text-xs bg-slate-100 dark:bg-slate-600 text-slate-500 dark:text-slate-400 rounded">{{ p.category }}</span>
+                  </div>
+                  <div class="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{{ truncateContent(p.content) }}</div>
+                </div>
+                <div class="flex gap-2 flex-shrink-0 ml-2">
+                  <button v-if="!p.is_default" @click="setPromptDefault(p.id)" class="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-sm">Set Default</button>
+                  <button @click="openPromptEdit(p)" class="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-sm">Edit</button>
+                  <button @click="deletePromptItem(p.id)" class="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-sm">Delete</button>
+                </div>
+              </div>
             </div>
+
+            <div v-if="promptLoading" class="text-center text-slate-400 dark:text-slate-500 text-sm py-4">
+              Loading prompts...
+            </div>
+
+            <div v-if="!promptLoading && promptList.length === 0 && !promptShowForm" class="text-center text-slate-400 dark:text-slate-500 text-sm py-4">
+              No prompts yet. Add one to get started.
+            </div>
+
+            <!-- Add/Edit form -->
+            <div v-if="promptShowForm" class="border-t border-slate-200 dark:border-slate-600 pt-4 space-y-3 flex-1 flex flex-col">
+              <h4 class="font-medium text-slate-800 dark:text-white">{{ promptEditingId ? 'Edit' : 'Add' }} Prompt</h4>
+              <div class="flex gap-3">
+                <div class="flex-1">
+                  <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Name</label>
+                  <input v-model="promptName" placeholder="e.g. Code Reviewer, Translator" class="w-full px-3 py-2 bg-white dark:bg-slate-700 rounded-lg border border-slate-300 dark:border-slate-600 focus:border-blue-500 focus:outline-none text-slate-800 dark:text-white placeholder-slate-400" />
+                </div>
+                <div class="w-1/3">
+                  <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Category</label>
+                  <input v-model="promptCategory" placeholder="e.g. Coding" class="w-full px-3 py-2 bg-white dark:bg-slate-700 rounded-lg border border-slate-300 dark:border-slate-600 focus:border-blue-500 focus:outline-none text-slate-800 dark:text-white placeholder-slate-400" />
+                </div>
+              </div>
+              <div class="flex-1 flex flex-col">
+                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Prompt Content</label>
+                <textarea
+                  v-model="promptContent"
+                  placeholder="Enter system prompt content..."
+                  class="flex-1 w-full px-3 py-2 bg-white dark:bg-slate-700 rounded-lg border border-slate-300 dark:border-slate-600 focus:border-blue-500 focus:outline-none resize-none text-slate-800 dark:text-white placeholder-slate-400 min-h-[200px]"
+                ></textarea>
+              </div>
+              <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                <input v-model="promptIsDefault" type="checkbox" class="rounded" />
+                Set as default prompt
+              </label>
+              <div class="flex justify-end gap-2">
+                <button @click="promptShowForm = false" class="px-3 py-2 bg-slate-100 dark:bg-slate-600 hover:bg-slate-200 dark:hover:bg-slate-500 rounded-lg text-sm text-slate-700 dark:text-white">Cancel</button>
+                <button @click="savePromptItem" :disabled="promptSaving || !promptName.trim() || !promptContent.trim()" class="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm text-white disabled:bg-slate-300 dark:disabled:bg-slate-600 disabled:cursor-not-allowed">{{ promptSaving ? 'Saving...' : 'Save' }}</button>
+              </div>
+            </div>
+
+            <button v-if="!promptShowForm" @click="openPromptAdd" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors text-white">
+              + Add Prompt
+            </button>
           </div>
         </template>
 

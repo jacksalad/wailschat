@@ -9,6 +9,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 - GitHub Actions CI/CD for automatic multi-platform builds
 
+## [v1.2.0] - 2026-04-26
+
+### Added
+- Multiple prompt management support
+- Explicit reasoning message handling for models such as DeepSeek R1
+
+### Fixed
+- Automatic correction and restoration for abnormal window positions
+
 ## [v1.1.0] - 2026-04-18
 
 ### Added

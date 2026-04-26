@@ -39,6 +39,7 @@ export interface Message {
   session_id: number
   role: string
   content: string
+  reasoning_content?: string  // Reasoning/thinking content from models like DeepSeek R1
   images?: string
   stats?: string     // JSON string from DB
   created_at: string
@@ -58,6 +59,7 @@ function generateMessageId(): string {
 export const useMessageStore = defineStore('message', () => {
   const messages = ref<Map<number, Message[]>>(new Map())
   const streamingContent = ref('')
+  const streamingReasoning = ref('')
   const isStreaming = ref(false)
   const streamingSessionId = ref<number | null>(null)
   const loadedSessions = ref<Set<number>>(new Set())
@@ -77,6 +79,7 @@ export const useMessageStore = defineStore('message', () => {
       session_id: m.session_id,
       role: m.role,
       content: m.content,
+      reasoning_content: m.reasoning_content || undefined,
       images: m.images,
       stats: m.stats,
       created_at: m.created_at,
@@ -93,6 +96,11 @@ export const useMessageStore = defineStore('message', () => {
     EventsOn('message_chunk', (sid: number, chunk: string) => {
       if (sid === streamingSessionId.value) {
         streamingContent.value += chunk
+      }
+    })
+    EventsOn('message_reasoning', (sid: number, chunk: string) => {
+      if (sid === streamingSessionId.value) {
+        streamingReasoning.value += chunk
       }
     })
     EventsOn('message_stats', (sid: number, stats: PerformanceStats) => {
@@ -137,6 +145,7 @@ export const useMessageStore = defineStore('message', () => {
           session_id: sid,
           role: 'assistant',
           content: streamingContent.value,
+          reasoning_content: streamingReasoning.value || undefined,
           stats: statsJSON,
           created_at: new Date().toISOString(),
           tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
@@ -147,6 +156,7 @@ export const useMessageStore = defineStore('message', () => {
         messages.value.set(sid, [...msgs])
 
         streamingContent.value = ''
+        streamingReasoning.value = ''
         liveStats.value = null
         isStreaming.value = false
         streamingSessionId.value = null
@@ -169,6 +179,7 @@ export const useMessageStore = defineStore('message', () => {
         msgs.push(errorMsg)
         messages.value.set(sid, [...msgs])
         streamingContent.value = ''
+        streamingReasoning.value = ''
         liveStats.value = null
         isStreaming.value = false
         streamingSessionId.value = null
@@ -199,6 +210,7 @@ export const useMessageStore = defineStore('message', () => {
 
     // Start streaming
     streamingContent.value = ''
+    streamingReasoning.value = ''
     isStreaming.value = true
     streamingSessionId.value = sessionId
     liveStats.value = null
@@ -224,6 +236,7 @@ export const useMessageStore = defineStore('message', () => {
       }
     } catch (e: any) {
       streamingContent.value = ''
+      streamingReasoning.value = ''
       liveStats.value = null
       isStreaming.value = false
       streamingSessionId.value = null
@@ -248,6 +261,7 @@ export const useMessageStore = defineStore('message', () => {
 
     // Start streaming
     streamingContent.value = ''
+    streamingReasoning.value = ''
     isStreaming.value = true
     streamingSessionId.value = sessionId
     liveStats.value = null
@@ -262,6 +276,7 @@ export const useMessageStore = defineStore('message', () => {
       await RetryMessage(sessionId, messageId)
     } catch (e: any) {
       streamingContent.value = ''
+      streamingReasoning.value = ''
       liveStats.value = null
       isStreaming.value = false
       streamingSessionId.value = null
@@ -306,6 +321,7 @@ export const useMessageStore = defineStore('message', () => {
 
     // Start streaming
     streamingContent.value = ''
+    streamingReasoning.value = ''
     isStreaming.value = true
     streamingSessionId.value = sessionId
     liveStats.value = null
@@ -329,6 +345,7 @@ export const useMessageStore = defineStore('message', () => {
       }
     } catch (e: any) {
       streamingContent.value = ''
+      streamingReasoning.value = ''
       liveStats.value = null
       isStreaming.value = false
       streamingSessionId.value = null
@@ -345,6 +362,7 @@ export const useMessageStore = defineStore('message', () => {
 
   function cleanupEvents() {
     EventsOff('message_chunk')
+    EventsOff('message_reasoning')
     EventsOff('message_done')
     EventsOff('message_error')
     EventsOff('message_stats')
@@ -398,7 +416,7 @@ export const useMessageStore = defineStore('message', () => {
   }
 
   return {
-    messages, streamingContent, isStreaming, streamingSessionId,
+    messages, streamingContent, streamingReasoning, isStreaming, streamingSessionId,
     loadHistory, sendMessage, retryMessage, retryFromUserMessage, cancelStream,
     getMessages, getStats, parseStats, clearSession, clearHistory,
     getActiveToolCalls, getActiveToolResults,

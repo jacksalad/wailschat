@@ -132,7 +132,7 @@ func (c *Client) StreamChat(
 	ctx context.Context,
 	baseURL, apiKey, modelName string,
 	messages []model.ChatMessage,
-	onChunk func(content string, toolCalls []model.ToolCall, finishReason string),
+	onChunk func(content string, reasoningContent string, toolCalls []model.ToolCall, finishReason string),
 	tools []model.Tool,
 ) (*model.PerformanceStats, error) {
 	reqBody := model.ChatCompletionRequest{
@@ -331,12 +331,9 @@ func (c *Client) StreamChat(
 			if result.ReasoningContent != "" {
 				resetTimer(reasoningTimeout)
 			}
-			// Forward reasoning content as regular content for display
-			if result.ReasoningContent != "" {
-				onChunk(result.ReasoningContent, nil, result.FinishReason)
-			}
-			if result.Content != "" {
-				onChunk(result.Content, nil, result.FinishReason)
+		// Send reasoning content and regular content separately
+			if result.ReasoningContent != "" || result.Content != "" {
+				onChunk(result.Content, result.ReasoningContent, nil, result.FinishReason)
 			}
 		}
 	}
@@ -350,7 +347,7 @@ func (c *Client) StreamChat(
 }
 
 // flushToolCalls converts accumulated tool calls to slice and calls onChunk
-func flushToolCalls(toolAccum map[int]*model.ToolCall, onChunk func(content string, toolCalls []model.ToolCall, finishReason string)) {
+func flushToolCalls(toolAccum map[int]*model.ToolCall, onChunk func(content string, reasoningContent string, toolCalls []model.ToolCall, finishReason string)) {
 	if len(toolAccum) == 0 {
 		return
 	}
@@ -364,7 +361,7 @@ func flushToolCalls(toolAccum map[int]*model.ToolCall, onChunk func(content stri
 	// Clear accumulator (map will be returned to pool by caller)
 	clearToolAccum(toolAccum)
 	// Call onChunk with accumulated tool calls
-	onChunk("", toolCalls, "tool_calls")
+	onChunk("", "", toolCalls, "tool_calls")
 }
 
 // clearToolAccum clears all entries from the toolAccum map
