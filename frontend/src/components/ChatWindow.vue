@@ -1,14 +1,16 @@
 <script lang="ts" setup>
-import {computed, watch, nextTick, ref, onMounted, onBeforeUnmount} from 'vue'
+import {computed, watch, nextTick, ref, onMounted, onBeforeUnmount, provide} from 'vue'
 import {useSessionStore} from '../stores/session'
 import {useMessageStore, type PerformanceStats} from '../stores/message'
 import {useProviderStore} from '../stores/provider'
 import {usePromptStore} from '../stores/prompt'
 import {useSettingsStore} from '../stores/settings'
+import {useSearchStore} from '../stores/search'
 import {Loader2, ChevronUp, ChevronDown, ArrowUp} from 'lucide-vue-next'
 import {OnFileDrop, OnFileDropOff} from '../../wailsjs/runtime/runtime'
 import MessageBubble from './MessageBubble.vue'
 import ChatInput from './ChatInput.vue'
+import SearchBar from './SearchBar.vue'
 import logoUrl from '../assets/logo.png'
 
 const sessionStore = useSessionStore()
@@ -16,6 +18,7 @@ const messageStore = useMessageStore()
 const providerStore = useProviderStore()
 const promptStore = usePromptStore()
 const settingsStore = useSettingsStore()
+const searchStore = useSearchStore()
 const messagesContainer = ref<HTMLElement | null>(null)
 const showModelPicker = ref(false)
 const showPromptPicker = ref(false)
@@ -23,6 +26,9 @@ const modelPickerRef = ref<HTMLElement | null>(null)
 const promptPickerRef = ref<HTMLElement | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
 const isDragOver = ref(false)
+const quoteText = ref('')
+const editingMessageId = ref<string | null>(null)
+provide('editingMessageId', editingMessageId)
 
 const chatWidthPx = computed(() => settingsStore.chatWidth + 'px')
 
@@ -223,7 +229,40 @@ function navigateToTurn(direction: 'prev' | 'next') {
 }
 // --- End turn navigation ---
 
+// --- Search integration ---
+function scrollToCurrentMatch() {
+  const msgIdx = searchStore.currentMsgIdx
+  if (msgIdx < 0 || !messagesContainer.value) return
+  const container = messagesContainer.value
+  const el = container.querySelector(`[data-msg-index="${msgIdx}"]`) as HTMLElement
+  if (!el) return
+  const containerRect = container.getBoundingClientRect()
+  const elRect = el.getBoundingClientRect()
+  const targetTop = container.scrollTop + (elRect.top - containerRect.top) - containerRect.height / 3
+  isNavigating = true
+  smoothScrollTo(container, Math.max(0, targetTop), 250, () => { isNavigating = false })
+}
+
+watch(() => searchStore.currentPos, () => {
+  nextTick(() => scrollToCurrentMatch())
+})
+
+watch(() => searchStore.debouncedQuery, (q) => {
+  if (q.trim()) {
+    searchStore.computeMatches(messages.value)
+    nextTick(() => scrollToCurrentMatch())
+  }
+})
+
+watch(() => messages.value.length, () => {
+  if (searchStore.debouncedQuery.trim()) {
+    searchStore.computeMatches(messages.value)
+  }
+})
+// --- End search integration ---
+
 watch(() => sessionStore.currentSessionId, async (newId) => {
+  if (searchStore.isOpen) searchStore.closeSearch()
   if (newId) {
     await messageStore.loadHistory(newId)
     await nextTick()
@@ -298,6 +337,16 @@ async function retryFromUser(messageId: string) {
   if (!sid) return
   await messageStore.retryFromUserMessage(sid, messageId)
 }
+
+async function editAndResend(messageId: string, newContent: string, newImages: string[]) {
+  const sid = sessionStore.currentSessionId
+  if (!sid) return
+  await messageStore.editAndResendMessage(sid, messageId, newContent, newImages)
+}
+
+function onQuote(content: string) {
+  quoteText.value = content
+}
 </script>
 
 <template>
@@ -365,6 +414,8 @@ async function retryFromUser(messageId: string) {
 
     <!-- Messages area with navigation overlay -->
     <div class="relative flex-1 min-h-0">
+      <!-- Search bar (Ctrl+F) -->
+      <SearchBar v-if="searchStore.isOpen" />
       <!-- Drop overlay -->
       <div v-if="isDragOver"
         class="absolute inset-0 z-50 flex items-center justify-center bg-blue-500/10 dark:bg-blue-400/10 border-2 border-dashed border-blue-400 dark:border-blue-500 rounded-lg pointer-events-none">
@@ -382,12 +433,15 @@ async function retryFromUser(messageId: string) {
         <div v-else class="messages-list mx-auto px-6 py-4 space-y-4" :style="{maxWidth: chatWidthPx}">
           <div v-for="(msg, index) in messages" :key="msg.id" :data-msg-index="index">
             <MessageBubble
-              v-memo="[msg.content, msg.images, msg.reasoning_content, msg.id === lastAssistantMessageId]"
+              v-memo="[msg.content, msg.images, msg.reasoning_content, msg.id === lastAssistantMessageId, settingsStore.showMessageTime, searchStore.debouncedQuery]"
               :message="msg"
               :stats="statsMap.get(msg.id)"
               :is-last-assistant="msg.id === lastAssistantMessageId"
+              :search-query="searchStore.debouncedQuery"
               @retry="retryMessage"
               @retry-from-user="retryFromUser"
+              @edit-and-resend="editAndResend"
+              @quote="onQuote"
             />
           </div>
           <!-- Streaming message -->
@@ -458,10 +512,12 @@ async function retryFromUser(messageId: string) {
     <ChatInput
       v-if="currentSession"
       ref="chatInputRef"
-      :disabled="messageStore.isStreaming"
+      :disabled="messageStore.isStreaming || editingMessageId !== null"
       @send="send"
       @cancel="messageStore.cancelStream"
       :is-streaming="messageStore.isStreaming"
+      :quote-text="quoteText"
+      @quote-consumed="quoteText = ''"
     />
   </div>
 </template>

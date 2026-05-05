@@ -1,8 +1,11 @@
 <script lang="ts" setup>
-import {computed, ref} from 'vue'
+import {computed, ref, inject, nextTick, type Ref} from 'vue'
 import MarkdownMessage from './MarkdownMessage.vue'
-import {Copy, RefreshCw, BarChart3, Check, X, ChevronDown, ChevronRight, Loader2, Wrench, Folder, Terminal, Brain} from 'lucide-vue-next'
+import ContextMenu, {type MenuItem} from './ContextMenu.vue'
+import {Copy, RefreshCw, BarChart3, Check, X, ChevronDown, ChevronRight, Loader2, Wrench, Folder, Terminal, Brain, ClipboardCopy, Quote, Pencil} from 'lucide-vue-next'
 import type {PerformanceStats, MCPToolCall, MCPToolResult} from '../stores/message'
+import {useSettingsStore} from '../stores/settings'
+import {formatRelativeTime} from '../utils/format'
 
 const props = defineProps<{
   message: {
@@ -20,14 +23,19 @@ const props = defineProps<{
   streamingReasoning?: string
   stats?: PerformanceStats
   isLastAssistant?: boolean
+  searchQuery?: string
 }>()
 
 const emit = defineEmits<{
   retry: [messageId: string]
   retryFromUser: [messageId: string]
+  quote: [content: string]
+  editAndResend: [messageId: string, newContent: string, newImages: string[]]
 }>()
 
 const isUser = computed(() => props.message.role === 'user')
+const settingsStore = useSettingsStore()
+const showMessageTime = computed(() => settingsStore.showMessageTime === '1' || settingsStore.showMessageTime === 'true')
 const images = computed(() => {
   if (!props.message.images) return []
   try {
@@ -43,6 +51,29 @@ const reasoningText = computed(() => {
 })
 
 const hasReasoning = computed(() => reasoningText.value.length > 0)
+
+// Search highlighting for user messages (plain text)
+const userHighlightedSegments = computed(() => {
+  const q = props.searchQuery?.trim()
+  if (!q || !isUser.value) return [{text: props.message.content, highlight: false}]
+  const segments: {text: string; highlight: boolean}[] = []
+  const content = props.message.content
+  const lower = content.toLowerCase()
+  const queryLower = q.toLowerCase()
+  let lastIdx = 0
+  let searchFrom = 0
+  while (searchFrom < content.length) {
+    const idx = lower.indexOf(queryLower, searchFrom)
+    if (idx === -1) break
+    if (idx > lastIdx) segments.push({text: content.slice(lastIdx, idx), highlight: false})
+    segments.push({text: content.slice(idx, idx + q.length), highlight: true})
+    lastIdx = idx + q.length
+    searchFrom = lastIdx
+  }
+  if (lastIdx < content.length) segments.push({text: content.slice(lastIdx), highlight: false})
+  if (segments.length === 0) segments.push({text: content, highlight: false})
+  return segments
+})
 
 // Reasoning section state
 const showReasoning = ref(false)
@@ -74,6 +105,53 @@ async function copyContent() {
     setTimeout(() => { copied.value = false }, 1500)
   } catch (e) {
     console.error('Copy failed:', e)
+  }
+}
+
+// Edit state (shared via provide/inject to ensure only one edit at a time)
+const editingMessageId = inject<Ref<string | null>>('editingMessageId', ref(null))
+const isEditing = computed(() => isUser.value && editingMessageId.value === String(props.message.id))
+const editContent = ref('')
+const editTextarea = ref<HTMLTextAreaElement | null>(null)
+
+function startEdit() {
+  editingMessageId.value = String(props.message.id)
+  editContent.value = props.message.content
+  nextTick(() => {
+    autoResizeEdit()
+    editTextarea.value?.focus()
+  })
+}
+
+function cancelEdit() {
+  editingMessageId.value = null
+  editContent.value = ''
+}
+
+function saveEdit() {
+  const trimmed = editContent.value.trim()
+  if (!trimmed && images.value.length === 0) return
+  emit('editAndResend', String(props.message.id), trimmed, images.value)
+  editingMessageId.value = null
+  editContent.value = ''
+}
+
+function autoResizeEdit() {
+  const el = editTextarea.value
+  if (!el) return
+  el.style.height = 'auto'
+  const newHeight = Math.min(el.scrollHeight, 200)
+  el.style.height = newHeight + 'px'
+  el.style.overflowY = newHeight >= 200 ? 'auto' : 'hidden'
+}
+
+function handleEditKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    saveEdit()
+  }
+  if (e.key === 'Escape') {
+    cancelEdit()
   }
 }
 
@@ -135,31 +213,169 @@ function formatResult(result: string): string {
     return result
   }
 }
+
+// Context menu
+const menuVisible = ref(false)
+const menuX = ref(0)
+const menuY = ref(0)
+const menuItems = ref<MenuItem[]>([])
+const markdownRef = ref<InstanceType<typeof MarkdownMessage> | null>(null)
+const menuSelectedText = ref('')
+
+function onContextMenu(e: MouseEvent) {
+  e.preventDefault()
+  menuX.value = e.clientX
+  menuY.value = e.clientY
+
+  const sel = window.getSelection()
+  const selected = sel?.toString().trim() || ''
+  menuSelectedText.value = selected
+
+  const copyTarget = selected || props.message.content
+  const quoteTarget = selected || props.message.content
+
+  if (isUser.value) {
+    menuItems.value = [
+      { label: 'Edit', icon: Pencil, action: () => startEdit() },
+      { label: 'Copy', icon: Copy, action: () => { navigator.clipboard.writeText(copyTarget).catch(() => {}) } },
+      { label: 'Quote', icon: Quote, action: () => emit('quote', quoteTarget) },
+      { divider: true },
+      { label: 'Retry from here', icon: RefreshCw, action: () => emit('retryFromUser', String(props.message.id)) },
+    ]
+  } else {
+    const items: MenuItem[] = [
+      { label: 'Copy', icon: Copy, action: () => { navigator.clipboard.writeText(selected || props.message.content).catch(() => {}) } },
+      { label: 'Copy Text', icon: ClipboardCopy, action: () => { navigator.clipboard.writeText(selected || getPlainText()).catch(() => {}) } },
+      { label: 'Quote', icon: Quote, action: () => emit('quote', quoteTarget) },
+    ]
+    if (props.isLastAssistant && !props.streaming) {
+      items.push({ divider: true })
+      items.push({ label: 'Retry', icon: RefreshCw, action: () => emit('retry', String(props.message.id)) })
+    }
+    menuItems.value = items
+  }
+  menuVisible.value = true
+}
+
+function getPlainText(): string {
+  const el = markdownRef.value?.$el as HTMLElement | undefined
+  return (el?.textContent || '').trim()
+}
+
+
 </script>
 
 <template>
-  <div :class="['message-wrapper flex', isUser ? 'justify-end' : 'justify-start']">
+  <div class="message-wrapper flex flex-col">
+    <div v-if="showMessageTime && message.created_at" class="text-center text-[10px] text-slate-400 dark:text-slate-500 mb-1 mt-2">
+      {{ formatRelativeTime(message.created_at) }}
+    </div>
+    <div :class="['flex', isUser ? 'justify-end' : 'justify-start']">
     <div :class="[
-      'message-bubble max-w-[85%] rounded-2xl px-4 py-3',
+      'message-bubble rounded-2xl px-4 py-3',
+      isEditing
+        ? 'w-[80%]'
+        : 'max-w-[85%]',
       isUser
         ? 'user-bubble bg-blue-600/50 text-white'
         : 'ai-bubble bg-slate-100/50 dark:bg-slate-700/50 text-slate-800 dark:text-slate-200',
-    ]">
-      <!-- Images -->
-      <div v-if="images.length > 0" class="message-images flex flex-wrap gap-2 mb-2">
-        <img
-          v-for="(img, index) in images"
-          :key="index"
-          :src="img"
-          class="max-w-[200px] max-h-[200px] rounded-lg object-contain"
-          alt="Attached image"
-          loading="lazy"
-          decoding="async"
-        />
-      </div>
-      <!-- Text content -->
-      <div v-if="isUser" class="message-content whitespace-pre-wrap">{{ message.content }}</div>
-      <div v-else class="message-content-wrapper">
+    ]" @contextmenu="onContextMenu">
+      <!-- User message: view mode or edit mode -->
+      <template v-if="isUser">
+        <!-- View mode -->
+        <template v-if="!isEditing">
+          <div v-if="images.length > 0" class="message-images flex flex-wrap gap-2 mb-2">
+            <img
+              v-for="(img, index) in images"
+              :key="index"
+              :src="img"
+              class="max-w-[200px] max-h-[200px] rounded-lg object-contain"
+              alt="Attached image"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+          <div class="message-content whitespace-pre-wrap"><template v-for="(seg, i) in userHighlightedSegments" :key="i"><mark v-if="seg.highlight" class="search-match">{{ seg.text }}</mark><span v-else>{{ seg.text }}</span></template></div>
+          <!-- Action buttons for user messages (bottom-right) -->
+          <div class="message-actions flex justify-end items-center gap-1 mt-1">
+            <button
+              v-if="!streaming"
+              @click="startEdit"
+              class="edit-btn p-1 rounded-md text-blue-300 hover:text-white hover:bg-blue-500/40 transition-colors"
+              title="Edit"
+            >
+              <Pencil class="w-3.5 h-3.5" />
+            </button>
+            <button
+              @click="copyContent"
+              class="copy-btn p-1 rounded-md text-blue-300 hover:text-white hover:bg-blue-500/40 transition-colors"
+              title="Copy"
+            >
+              <Check v-if="copied" class="w-3.5 h-3.5 text-green-300" />
+              <Copy v-else class="w-3.5 h-3.5" />
+            </button>
+            <button
+              @click="emit('retryFromUser', String(message.id))"
+              class="retry-btn p-1 rounded-md text-blue-300 hover:text-white hover:bg-blue-500/40 transition-colors"
+              title="Retry from here"
+            >
+              <RefreshCw class="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </template>
+        <!-- Edit mode -->
+        <template v-else>
+          <div v-if="images.length > 0" class="message-images flex flex-wrap gap-2 mb-2">
+            <img
+              v-for="(img, index) in images"
+              :key="index"
+              :src="img"
+              class="max-w-[200px] max-h-[200px] rounded-lg object-contain"
+              alt="Attached image"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+          <textarea
+            ref="editTextarea"
+            v-model="editContent"
+            @input="autoResizeEdit"
+            @keydown="handleEditKeydown"
+            class="w-full bg-white/20 border border-blue-300/50 rounded-lg px-3 py-2 text-white placeholder-blue-200/50 resize-none focus:outline-none focus:border-blue-200/70 text-sm"
+            rows="1"
+            placeholder="Edit message..."
+          ></textarea>
+          <div class="flex justify-end items-center gap-2 mt-2">
+            <button
+              @click="cancelEdit"
+              class="px-3 py-1.5 text-xs rounded-lg text-blue-200 hover:text-white hover:bg-blue-500/30 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              @click="saveEdit"
+              :disabled="!editContent.trim() && images.length === 0"
+              class="px-3 py-1.5 text-xs rounded-lg bg-blue-500/60 hover:bg-blue-500/80 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Save &amp; Submit
+            </button>
+          </div>
+        </template>
+      </template>
+      <!-- Assistant message content -->
+      <template v-else>
+        <div v-if="images.length > 0" class="message-images flex flex-wrap gap-2 mb-2">
+          <img
+            v-for="(img, index) in images"
+            :key="index"
+            :src="img"
+            class="max-w-[200px] max-h-[200px] rounded-lg object-contain"
+            alt="Attached image"
+            loading="lazy"
+            decoding="async"
+          />
+        </div>
+        <div class="message-content-wrapper">
         <!-- Reasoning section (collapsible) -->
         <div v-if="hasReasoning" class="reasoning-section mb-3">
           <button
@@ -179,31 +395,12 @@ function formatResult(result: string): string {
           </div>
         </div>
         <!-- Main content -->
-        <MarkdownMessage :content="message.content" :streaming="streaming" class="message-content" />
+        <MarkdownMessage ref="markdownRef" :content="message.content" :streaming="streaming" :search-query="searchQuery" class="message-content" />
         <span v-if="streaming && message.content" class="typing-cursor-bar"></span>
-      </div>
+        </div>
 
-      <!-- Action buttons for user messages (bottom-right) -->
-      <div v-if="isUser" class="message-actions flex justify-end items-center gap-1 mt-1">
-        <button
-          @click="copyContent"
-          class="copy-btn p-1 rounded-md text-blue-300 hover:text-white hover:bg-blue-500/40 transition-colors"
-          title="Copy"
-        >
-          <Check v-if="copied" class="w-3.5 h-3.5 text-green-300" />
-          <Copy v-else class="w-3.5 h-3.5" />
-        </button>
-        <button
-          @click="emit('retryFromUser', String(message.id))"
-          class="retry-btn p-1 rounded-md text-blue-300 hover:text-white hover:bg-blue-500/40 transition-colors"
-          title="Retry from here"
-        >
-          <RefreshCw class="w-3.5 h-3.5" />
-        </button>
-      </div>
-
-      <!-- Action buttons for assistant messages -->
-      <div v-if="!isUser && !streaming" class="message-actions flex items-center gap-1 mt-2 -mb-1 relative">
+        <!-- Action buttons for assistant messages -->
+        <div v-if="!streaming" class="message-actions flex items-center gap-1 mt-2 -mb-1 relative">
         <button
           @click="copyContent"
           class="copy-btn p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
@@ -323,7 +520,10 @@ function formatResult(result: string): string {
           </div>
         </div>
       </div>
+      </template>
     </div>
+    </div>
+    <ContextMenu :visible="menuVisible" :x="menuX" :y="menuY" :items="menuItems" @close="menuVisible = false" />
   </div>
 </template>
 
@@ -340,5 +540,10 @@ function formatResult(result: string): string {
 @keyframes cursor-blink {
   0%, 50% { opacity: 1; }
   51%, 100% { opacity: 0; }
+}
+:deep(.search-match) {
+  background-color: rgba(255, 212, 59, 0.4);
+  border-radius: 2px;
+  padding: 0 1px;
 }
 </style>

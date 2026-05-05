@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, nextTick, computed, onMounted, onUnmounted } from 'vue'
+import { ref, nextTick, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 import { Send, Square, ImagePlus } from 'lucide-vue-next'
 import { extractFilename } from '../utils/filepath'
@@ -12,11 +12,13 @@ interface FileRef {
 const props = defineProps<{
   disabled: boolean
   isStreaming: boolean
+  quoteText?: string
 }>()
 
 const emit = defineEmits<{
   (e: 'send', content: string, images: string[]): void
   (e: 'cancel'): void
+  (e: 'quoteConsumed'): void
 }>()
 
 const settingsStore = useSettingsStore()
@@ -101,6 +103,18 @@ function handlePaste(e: ClipboardEvent) {
 function removeImage(index: number) {
   selectedImages.value.splice(index, 1)
 }
+
+watch(() => props.quoteText, (val) => {
+  if (!val) return
+  const lines = val.split('\n')
+  const quoted = lines.map(l => '> ' + l).join('\n')
+  inputText.value = inputText.value ? inputText.value + '\n\n' + quoted + '\n' : quoted + '\n'
+  nextTick(() => {
+    autoResize()
+    textarea.value?.focus()
+  })
+  emit('quoteConsumed')
+})
 
 function send() {
   const text = inputText.value.trim()

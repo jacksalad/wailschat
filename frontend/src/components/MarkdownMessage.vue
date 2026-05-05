@@ -17,6 +17,7 @@ const mermaidSvgCache = new Map<string, string>()
 const props = defineProps<{
   content: string
   streaming?: boolean
+  searchQuery?: string
 }>()
 
 const copiedIndex = ref(-1)
@@ -400,8 +401,24 @@ function handleAction(e: MouseEvent) {
     toggleMermaidBlock(block)
   }
 }
+
+// Search highlighting
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+const highlightedHtml = computed(() => {
+  const q = props.searchQuery?.trim()
+  if (!q) return debouncedRendered.value
+  const escaped = escapeRegex(q)
+  const re = new RegExp(`(${escaped})`, 'gi')
+  // Only replace text between > and < (visible text nodes in HTML)
+  return debouncedRendered.value.replace(/>([^<]+)</g, (match, textContent: string) => {
+    return '>' + textContent.replace(re, '<mark class="search-match">$1</mark>') + '<'
+  })
+})
 </script>
 
 <template>
-  <div class="markdown-body" ref="containerRef" v-html="debouncedRendered" @click="handleAction"></div>
+  <div class="markdown-body" ref="containerRef" v-html="highlightedHtml" @click="handleAction"></div>
 </template>

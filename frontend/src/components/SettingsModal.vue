@@ -44,6 +44,8 @@ const toolEnabled = ref(settingsStore.toolEnabled === '1' || settingsStore.toolE
 const toolFileRead = ref(settingsStore.toolFileRead === '1' || settingsStore.toolFileRead === 'true')
 const toolFileWrite = ref(settingsStore.toolFileWrite === '1' || settingsStore.toolFileWrite === 'true')
 const toolShellExec = ref(settingsStore.toolShellExec === '1' || settingsStore.toolShellExec === 'true')
+const notifyOnComplete = ref(settingsStore.notifyOnComplete === '1' || settingsStore.notifyOnComplete === 'true')
+const showMessageTime = ref(settingsStore.showMessageTime === '1' || settingsStore.showMessageTime === 'true')
 const generalSaved = ref(false)
 
 // System fonts (from cached store)
@@ -148,8 +150,8 @@ async function savePromptItem() {
         category: promptCategory.value.trim(),
         is_default: promptIsDefault.value,
         sort_order: 0,
-        created_at: '',
-        updated_at: '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       })
       await promptStore.updatePrompt(p)
     } else {
@@ -405,6 +407,7 @@ const shortcutList: { key: keyof ShortcutBindings; label: string; description: s
   { key: 'clear_context', label: 'Clear Context', description: 'Clear all messages in current chat' },
   { key: 'focus_input', label: 'Focus Input', description: 'Focus the chat input box' },
   { key: 'toggle_sidebar', label: 'Toggle Sidebar', description: 'Show or hide the sidebar' },
+  { key: 'search_messages', label: 'Search Messages', description: 'Search within the current chat' },
 ]
 
 // --- MCP Servers settings state ---
@@ -712,6 +715,8 @@ async function saveGeneral() {
     tool_file_read: toolFileRead.value ? '1' : '0',
     tool_file_write: toolFileWrite.value ? '1' : '0',
     tool_shell_exec: toolShellExec.value ? '1' : '0',
+    notify_on_complete: notifyOnComplete.value ? '1' : '0',
+    show_message_time: showMessageTime.value ? '1' : '0',
   })
 
   // Force refresh background image if it changed
@@ -735,7 +740,7 @@ async function saveShortcuts() {
 }
 
 function resetShortcuts() {
-  shortcutBindings.value = { new_chat: 'ctrl+n', clear_context: 'ctrl+l', focus_input: '/', toggle_sidebar: 'ctrl+b' }
+  shortcutBindings.value = { new_chat: 'ctrl+n', clear_context: 'ctrl+l', focus_input: '/', toggle_sidebar: 'ctrl+b', search_messages: 'ctrl+f' }
 }
 
 const LOCAL_PREFIX = 'local://'
@@ -1188,6 +1193,50 @@ async function remove(id: number) {
                     />
                   </button>
                 </div>
+              </div>
+
+              <!-- Completion Notification -->
+              <div class="flex items-center justify-between pl-2">
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">Completion Notification</label>
+                  <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Show a Windows notification when AI finishes responding</p>
+                </div>
+                <button
+                  @click="notifyOnComplete = !notifyOnComplete"
+                  :class="[
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    notifyOnComplete ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
+                  ]"
+                >
+                  <span
+                    :class="[
+                      'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                      notifyOnComplete ? 'translate-x-6' : 'translate-x-1'
+                    ]"
+                  />
+                </button>
+              </div>
+
+              <!-- Show Message Timestamps -->
+              <div class="flex items-center justify-between pl-2">
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">Show Message Timestamps</label>
+                  <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Display timestamps on chat messages</p>
+                </div>
+                <button
+                  @click="showMessageTime = !showMessageTime"
+                  :class="[
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    showMessageTime ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
+                  ]"
+                >
+                  <span
+                    :class="[
+                      'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                      showMessageTime ? 'translate-x-6' : 'translate-x-1'
+                    ]"
+                  />
+                </button>
               </div>
             </div>
 

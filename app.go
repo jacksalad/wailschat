@@ -26,6 +26,7 @@ import (
 	"wailschat/internal/mcp"
 	"wailschat/internal/message"
 	"wailschat/internal/model"
+	"wailschat/internal/notify"
 	"wailschat/internal/provider"
 	"wailschat/internal/prompt"
 	"wailschat/internal/session"
@@ -809,6 +810,63 @@ func (a *App) RetryFromUserMessage(sessionID int64, messageID string) (string, e
 	return fmt.Sprintf("%d", newUserMsg.ID), nil
 }
 
+// EditAndResendMessage replaces a user message with edited content, deletes all
+// subsequent messages, and re-streams the AI response.
+func (a *App) EditAndResendMessage(sessionID int64, messageID string, newContent string, newImages []string) (string, error) {
+	imagesJSON := "[]"
+	if len(newImages) > 0 {
+		if b, err := json.Marshal(newImages); err == nil {
+			imagesJSON = string(b)
+		}
+	}
+
+	if err := a.messageSvc.DeleteFromID(sessionID, messageID); err != nil {
+		return "", fmt.Errorf("edit and resend: delete: %w", err)
+	}
+
+	newUserMsg := &model.Message{
+		SessionID: sessionID,
+		Role:      "user",
+		Content:   newContent,
+		Images:    imagesJSON,
+	}
+	if err := a.messageSvc.Create(newUserMsg); err != nil {
+		return "", fmt.Errorf("edit and resend: save user message: %w", err)
+	}
+
+	a.sessionSvc.TouchSession(sessionID)
+
+	sess, err := a.sessionSvc.GetByID(sessionID)
+	if err != nil {
+		return "", fmt.Errorf("edit and resend: get session: %w", err)
+	}
+	p, err := a.providerSvc.GetByID(sess.ProviderID)
+	if err != nil {
+		return "", fmt.Errorf("edit and resend: get provider: %w", err)
+	}
+
+	history, err := a.messageSvc.GetBySession(sessionID)
+	if err != nil {
+		return "", fmt.Errorf("edit and resend: get history: %w", err)
+	}
+
+	systemPrompt := a.resolveSystemPrompt(sessionID)
+	chatMsgs := buildChatMessages(history, systemPrompt)
+
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Minute)
+	a.cancelFuncs.Store(sessionID, cancel)
+
+	go func() {
+		defer func() {
+			a.cancelFuncs.Delete(sessionID)
+			cancel()
+		}()
+		a.streamAndSave(ctx, sessionID, sess, p, chatMsgs)
+	}()
+
+	return fmt.Sprintf("%d", newUserMsg.ID), nil
+}
+
 // ReorderSessions persists a new display order for sessions.
 // orderedIDs should be in the desired display order (first = top).
 func (a *App) ReorderSessions(orderedIDs []int64) error {
@@ -871,6 +929,7 @@ func (a *App) streamAndSave(
 
 	if err != nil {
 		wailsRuntime.EventsEmit(a.ctx, "message_error", sessionID, err.Error())
+		a.notifyIfEnabled(sess.Name, "生成出错")
 		return
 	}
 
@@ -1073,6 +1132,22 @@ func (a *App) streamAndSave(
 
 	// Emit message_done with the saved message ID (as string for frontend compatibility)
 	wailsRuntime.EventsEmit(a.ctx, "message_done", sessionID, fmt.Sprintf("%d", assistantMsg.ID))
+
+	// Show Windows toast notification if enabled
+	a.notifyIfEnabled(sess.Name, "AI 回复完成")
+}
+
+// notifyIfEnabled shows a Windows toast notification if the notify_on_complete setting is enabled.
+func (a *App) notifyIfEnabled(sessionName, body string) {
+	val, err := a.settingsSvc.Get("notify_on_complete")
+	if err != nil || val != "1" {
+		return
+	}
+	title := "WailsChat"
+	if sessionName != "" && sessionName != "New Chat" {
+		title = sessionName
+	}
+	notify.Show(title, body)
 }
 
 // generateTitleAsync generates a session title based on user's question content.
@@ -1188,10 +1263,35 @@ func extractServerID(fqToolName string) string {
 	return ""
 }
 
-// makeMCPToolName creates a fully qualified tool name from serverID and toolName
+// sanitizeToolName converts an arbitrary string to a valid function identifier.
+// Must match [a-zA-Z_][a-zA-Z0-9_]* for compatibility with all LLM APIs (e.g. Kimi).
+func sanitizeToolName(s string) string {
+	var b strings.Builder
+	for i, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '_' {
+			b.WriteRune(r)
+		} else if r >= '0' && r <= '9' {
+			if i == 0 {
+				// Leading digit — prefix with underscore
+				b.WriteString("_")
+			}
+			b.WriteRune(r)
+		} else if r == '-' {
+			b.WriteRune('_')
+		}
+		// drop other chars (braces, dots, etc.)
+	}
+	result := b.String()
+	if result == "" {
+		return "_tool"
+	}
+	return result
+}
+
+// makeMCPToolName creates a fully qualified tool name from serverID and toolName.
+// Both parts are sanitized so the result is always a valid identifier.
 func makeMCPToolName(serverID, toolName string) string {
-	// Use a strong separator (triple underscore) to avoid conflicts with underscores in serverID or toolName
-	return serverID + "___" + toolName
+	return sanitizeToolName(serverID) + "___" + sanitizeToolName(toolName)
 }
 
 // extractToolName extracts the original tool name from a fully qualified tool name

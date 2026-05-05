@@ -6,6 +6,7 @@ import {
   CancelMessage,
   RetryMessage,
   RetryFromUserMessage,
+  EditAndResendMessage,
   ClearSessionMessages,
 } from '../../wailsjs/go/main/App'
 import {EventsOn, EventsOff} from '../../wailsjs/runtime/runtime'
@@ -354,6 +355,62 @@ export const useMessageStore = defineStore('message', () => {
     }
   }
 
+  async function editAndResendMessage(sessionId: number, messageId: string, newContent: string, newImages: string[] = []) {
+    cleanupEvents()
+
+    const msgs = messages.value.get(sessionId) || []
+    const idx = msgs.findIndex(m => m.id === messageId)
+    if (idx !== -1) {
+      messages.value.set(sessionId, msgs.slice(0, idx))
+    }
+
+    loadedSessions.value.delete(sessionId)
+
+    const optimisticId = generateMessageId()
+    const userMsg: Message = {
+      id: optimisticId,
+      session_id: sessionId,
+      role: 'user',
+      content: newContent,
+      images: JSON.stringify(newImages),
+      created_at: new Date().toISOString(),
+    }
+    const remainingMsgs = messages.value.get(sessionId) || []
+    remainingMsgs.push(userMsg)
+    messages.value.set(sessionId, [...remainingMsgs])
+
+    streamingContent.value = ''
+    streamingReasoning.value = ''
+    isStreaming.value = true
+    streamingSessionId.value = sessionId
+    liveStats.value = null
+
+    setupStreamListeners(sessionId)
+
+    const sessionStore = useSessionStore()
+    sessionStore.moveToTop(sessionId)
+
+    try {
+      const newId = await EditAndResendMessage(sessionId, messageId, newContent, newImages)
+      if (newId) {
+        const currentMsgs = messages.value.get(sessionId) || []
+        const lastMsg = currentMsgs[currentMsgs.length - 1]
+        if (lastMsg && lastMsg.role === 'user' && lastMsg.id === optimisticId) {
+          lastMsg.id = newId
+          messages.value.set(sessionId, [...currentMsgs])
+        }
+      }
+    } catch (e: any) {
+      streamingContent.value = ''
+      streamingReasoning.value = ''
+      liveStats.value = null
+      isStreaming.value = false
+      streamingSessionId.value = null
+      cleanupEvents()
+      throw e
+    }
+  }
+
   function cancelStream() {
     if (streamingSessionId.value !== null) {
       CancelMessage(streamingSessionId.value)
@@ -417,7 +474,7 @@ export const useMessageStore = defineStore('message', () => {
 
   return {
     messages, streamingContent, streamingReasoning, isStreaming, streamingSessionId,
-    loadHistory, sendMessage, retryMessage, retryFromUserMessage, cancelStream,
+    loadHistory, sendMessage, retryMessage, retryFromUserMessage, editAndResendMessage, cancelStream,
     getMessages, getStats, parseStats, clearSession, clearHistory,
     getActiveToolCalls, getActiveToolResults,
   }

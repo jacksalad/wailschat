@@ -30,6 +30,21 @@ import markdown from 'highlight.js/lib/languages/markdown'
 import css from 'highlight.js/lib/languages/css'
 import diff from 'highlight.js/lib/languages/diff'
 import shell from 'highlight.js/lib/languages/shell'
+import matlab from 'highlight.js/lib/languages/matlab'
+import lua from 'highlight.js/lib/languages/lua'
+import r from 'highlight.js/lib/languages/r'
+import scala from 'highlight.js/lib/languages/scala'
+import kotlin from 'highlight.js/lib/languages/kotlin'
+import swift from 'highlight.js/lib/languages/swift'
+import perl from 'highlight.js/lib/languages/perl'
+import delphi from 'highlight.js/lib/languages/delphi'
+import objectivec from 'highlight.js/lib/languages/objectivec'
+import makefile from 'highlight.js/lib/languages/makefile'
+import nginx from 'highlight.js/lib/languages/nginx'
+import dockerfile from 'highlight.js/lib/languages/dockerfile'
+import vim from 'highlight.js/lib/languages/vim'
+import latex from 'highlight.js/lib/languages/latex'
+import ini from 'highlight.js/lib/languages/ini'
 
 hljs.registerLanguage('javascript', javascript)
 hljs.registerLanguage('js', javascript)
@@ -63,6 +78,26 @@ hljs.registerLanguage('markdown', markdown)
 hljs.registerLanguage('md', markdown)
 hljs.registerLanguage('css', css)
 hljs.registerLanguage('diff', diff)
+hljs.registerLanguage('matlab', matlab)
+hljs.registerLanguage('lua', lua)
+hljs.registerLanguage('r', r)
+hljs.registerLanguage('scala', scala)
+hljs.registerLanguage('kotlin', kotlin)
+hljs.registerLanguage('swift', swift)
+hljs.registerLanguage('perl', perl)
+hljs.registerLanguage('delphi', delphi)
+hljs.registerLanguage('objectivec', objectivec)
+hljs.registerLanguage('objective-c', objectivec)
+hljs.registerLanguage('objective-c++', objectivec)
+hljs.registerLanguage('objc', objectivec)
+hljs.registerLanguage('makefile', makefile)
+hljs.registerLanguage('nginx', nginx)
+hljs.registerLanguage('dockerfile', dockerfile)
+hljs.registerLanguage('vim', vim)
+hljs.registerLanguage('latex', latex)
+hljs.registerLanguage('tex', latex)
+hljs.registerLanguage('ini', ini)
+hljs.registerLanguage('toml', ini)
 
 // Fix bold rendering when ** is adjacent to Unicode punctuation (e.g. Chinese quotes ""、《》)
 // Per CommonMark emphasis algorithm, ** next to punctuation fails left/right-flanking checks,

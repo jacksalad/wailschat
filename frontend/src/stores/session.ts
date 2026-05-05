@@ -79,11 +79,19 @@ export const useSessionStore = defineStore('session', () => {
     s.prompt_id = promptId
   }
 
+  async function renameSession(sessionId: number, newName: string) {
+    const s = sessions.value.find(s => s.id === sessionId)
+    if (!s) return
+    await UpdateSession(sessionId, s.provider_id, newName, s.model, s.prompt_id)
+    s.name = newName
+  }
+
   // Move a session to the top of the local list (for UI responsiveness)
   function moveToTop(sessionId: number) {
     const idx = sessions.value.findIndex(s => s.id === sessionId)
     if (idx > 0) {
       const [session] = sessions.value.splice(idx, 1)
+      session.updated_at = new Date().toISOString()
       sessions.value.unshift(session)
     }
   }
@@ -112,7 +120,7 @@ export const useSessionStore = defineStore('session', () => {
 
   return {
     sessions, currentSessionId, loading,
-    fetchSessions, createSession, deleteSession, switchSession, getCurrentSession, updateSessionName, updateSessionModel, updateSessionPrompt,
+    fetchSessions, createSession, deleteSession, switchSession, getCurrentSession, updateSessionName, updateSessionModel, updateSessionPrompt, renameSession,
     moveToTop, reorderSessions,
   }
 })

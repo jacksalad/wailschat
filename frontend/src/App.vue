@@ -7,6 +7,7 @@ import {useSessionStore} from './stores/session'
 import {usePromptStore} from './stores/prompt'
 import {useSettingsStore} from './stores/settings'
 import {useMessageStore} from './stores/message'
+import {useSearchStore} from './stores/search'
 import {ToggleFullscreen} from '../wailsjs/go/main/App'
 
 const providerStore = useProviderStore()
@@ -73,6 +74,18 @@ function onGlobalKeydown(e: KeyboardEvent) {
   if (matchesShortcut(e, shortcuts.clear_context) && sessionStore.currentSessionId) {
     e.preventDefault()
     messageStore.clearHistory(sessionStore.currentSessionId)
+    return
+  }
+
+  // Search Messages (Ctrl+F) — toggle search bar
+  if (matchesShortcut(e, shortcuts.search_messages) && sessionStore.currentSessionId) {
+    e.preventDefault()
+    const searchStore = useSearchStore()
+    if (searchStore.isOpen) {
+      searchStore.closeSearch()
+    } else {
+      searchStore.openSearch()
+    }
     return
   }
 

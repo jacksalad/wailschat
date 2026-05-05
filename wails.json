@@ -10,5 +10,6 @@
   "author": {
     "name": "RedJACK",
     "email": "jackonessalad@qq.com"
-  }
+  },
+  "build:tags": "webkit2_41"
 }

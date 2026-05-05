@@ -9,6 +9,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 - GitHub Actions CI/CD for automatic multi-platform builds
 
+## [v1.3.0] - 2026-05-05
+
+### Added
+- Date and time display in session list
+- Windows desktop notification when chat response generation completes
+- Right-click context menu with "Quote", "Copy" and other actions
+- Ctrl+F search functionality in chat
+- Edit and regenerate for sent user messages
+- Extended highlight.js language support for Markdown code blocks
+
+### Fixed
+- Prompt save anomaly issue
+- Built-in tool function naming convention normalization
+
 ## [v1.2.0] - 2026-04-26
 
 ### Added

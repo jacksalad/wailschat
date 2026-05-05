@@ -606,6 +606,16 @@ FROM settings WHERE key = 'system_prompt';
 UPDATE schema_version SET version = 21;
 `
 
+const schemaV22 = `
+INSERT OR IGNORE INTO settings (key, value) VALUES ('notify_on_complete', '0');
+UPDATE schema_version SET version = 22;
+`
+
+const schemaV23 = `
+INSERT OR IGNORE INTO settings (key, value) VALUES ('show_message_time', '0');
+UPDATE schema_version SET version = 23;
+`
+
 // Init opens the SQLite database and runs migrations.
 func Init() (*sql.DB, error) {
 	configDir, err := os.UserConfigDir()
@@ -744,6 +754,14 @@ func migrate(db *sql.DB) error {
 			// Migration v21: Add prompts table for multi-prompt management
 			db.Exec(schemaV21)
 		}
+	if version < 22 {
+		// Migration v22: Add notify_on_complete setting for completion notifications
+		db.Exec(schemaV22)
+	}
+	if version < 23 {
+		// Migration v23: Add show_message_time setting for message timestamps
+		db.Exec(schemaV23)
+	}
 	return nil
 }
 

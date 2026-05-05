@@ -9,6 +9,7 @@ export interface ShortcutBindings {
   clear_context: string
   focus_input: string
   toggle_sidebar: string
+  search_messages: string
 }
 
 const DEFAULT_SHORTCUTS: ShortcutBindings = {
@@ -16,6 +17,7 @@ const DEFAULT_SHORTCUTS: ShortcutBindings = {
   clear_context: 'ctrl+l',
   focus_input: '/',
   toggle_sidebar: 'ctrl+b',
+  search_messages: 'ctrl+f',
 }
 
 // Local file paths are stored with this prefix to distinguish from URLs
@@ -40,6 +42,8 @@ export const useSettingsStore = defineStore('settings', () => {
   const toolFileRead = computed(() => settings.value.get('tool_file_read') || '0')
   const toolFileWrite = computed(() => settings.value.get('tool_file_write') || '0')
   const toolShellExec = computed(() => settings.value.get('tool_shell_exec') || '0')
+  const notifyOnComplete = computed(() => settings.value.get('notify_on_complete') || '0')
+  const showMessageTime = computed(() => settings.value.get('show_message_time') || '0')
   const selectedTheme = computed(() => settings.value.get('selected_theme') || 'Default')
 
   const shortcuts = computed<ShortcutBindings>(() => {
@@ -279,7 +283,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   return {
     settings, settingsError, hasError, systemPrompt, fontFamily, fontSize, chatWidth, theme, customStyles,
-    bgImage, bgOpacity, sidebarWidth, shortcuts, toolEnabled, toolFileRead, toolFileWrite, toolShellExec, selectedTheme,
+    bgImage, bgOpacity, sidebarWidth, shortcuts, toolEnabled, toolFileRead, toolFileWrite, toolShellExec, notifyOnComplete, showMessageTime, selectedTheme,
     fetchSettings, retryFetchSettings, saveSettings, applyToDOM, applyCustomStyles, applyBackgroundImage, setTheme,
     systemFonts, fontsLoaded, loadSystemFonts, clearBgImageCache,
   }
