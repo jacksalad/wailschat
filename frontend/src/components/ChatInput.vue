@@ -144,7 +144,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="chat-input-area border-t border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-800/50 p-4">
+  <div class="chat-input-area border-t border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-800/50 p-3">
     <div class="mx-auto input-container" :style="{ maxWidth: chatWidthPx }">
       <!-- Image preview -->
       <div v-if="selectedImages.length > 0" class="image-preview-container mb-3 flex flex-wrap gap-2">
@@ -184,7 +184,7 @@ onUnmounted(() => {
         <textarea ref="textarea" v-model="inputText" @input="autoResize" @keydown="handleKeydown" :disabled="disabled"
           :placeholder="disabled ? 'Waiting for response...' : 'Type a message... (Enter to send, Shift+Enter for newline)'"
           rows="1"
-          class="chat-input-textarea input-textarea flex-1 px-4 py-3 bg-white dark:bg-slate-700 rounded-xl border border-slate-300 dark:border-slate-600 focus:border-blue-500 focus:outline-none resize-none text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 disabled:opacity-50" />
+          class="chat-input-textarea input-textarea flex-1 px-4 py-2 bg-white dark:bg-slate-700 rounded-xl border border-slate-300 dark:border-slate-600 focus:border-blue-500 focus:outline-none resize-none text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 disabled:opacity-50" />
         <button v-if="!isStreaming" @click="send"
           :disabled="disabled || (!inputText.trim() && selectedImages.length === 0 && fileRefs.length === 0)"
           class="send-btn shrink-0 p-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition-colors text-white"

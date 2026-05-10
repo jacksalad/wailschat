@@ -38,6 +38,10 @@ export function EditAndResendMessage(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['EditAndResendMessage'](arg1, arg2, arg3, arg4);
 }
 
+export function FetchImageAsBase64(arg1) {
+  return window['go']['main']['App']['FetchImageAsBase64'](arg1);
+}
+
 export function GetDefaultStyles() {
   return window['go']['main']['App']['GetDefaultStyles']();
 }

@@ -6,7 +6,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,6 +36,11 @@ import (
 	"wailschat/internal/tools"
 )
 
+type mcpToolMapping struct {
+	serverID string
+	toolName string
+}
+
 type App struct {
 	ctx          context.Context
 	db           *sql.DB
@@ -48,6 +55,8 @@ type App struct {
 	cancelFuncs  sync.Map
 	toolManager             *tools.Manager
 	wasMaxBeforeFullscreen  bool
+	mcpToolMu               sync.RWMutex
+	mcpToolMap              map[string]mcpToolMapping // sanitizedFQName -> {serverID, toolName}
 }
 
 func NewApp() *App {
@@ -60,6 +69,7 @@ func NewApp() *App {
 		llmClient:   llm.NewClient(),
 		mcpClient:   mcp.NewClient(),
 		toolManager: tools.NewManager(allowedDirs, cmdBlacklist),
+		mcpToolMap:  make(map[string]mcpToolMapping),
 	}
 }
 
@@ -596,6 +606,33 @@ func (a *App) ReadImageAsBase64(filePath string) (string, error) {
 	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data), nil
 }
 
+// FetchImageAsBase64 downloads an image from a URL and returns it as a base64 data URI.
+// This bypasses CORS restrictions that prevent canvas-based copying in the frontend.
+func (a *App) FetchImageAsBase64(imageURL string) (string, error) {
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(imageURL)
+	if err != nil {
+		return "", fmt.Errorf("fetch image: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("fetch image: HTTP %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10MB limit
+	if err != nil {
+		return "", fmt.Errorf("read image data: %w", err)
+	}
+
+	mime := resp.Header.Get("Content-Type")
+	if mime == "" || !strings.HasPrefix(mime, "image/") {
+		mime = http.DetectContentType(data)
+	}
+
+	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data), nil
+}
+
 // --- Message Methods ---
 
 func (a *App) GetHistory(sessionID int64) ([]model.Message, error) {
@@ -976,26 +1013,29 @@ func (a *App) streamAndSave(
 		// Execute each tool call
 		var toolResults []model.ChatMessage
 		for _, tc := range toolCalls {
-			// Check if this is a built-in tool
-			toolName := extractToolName(tc.Function.Name)
 			var toolResult *model.ToolCallResult
 
-			if a.toolManager.GetTool(toolName) != nil {
-				// Execute built-in tool
-				toolResult = a.executeBuiltInTool(toolName, tc.Function.Arguments)
-			} else {
-				// Execute MCP tool
-				serverID := extractServerID(tc.Function.Name)
+			if a.toolManager.GetTool(tc.Function.Name) != nil {
+				// Built-in tool: name is not sanitized, use directly
+				toolResult = a.executeBuiltInTool(tc.Function.Name, tc.Function.Arguments)
+			} else if realServerID, realToolName, ok := a.resolveMCPToolName(tc.Function.Name); ok {
+				// MCP tool: resolve original serverID and toolName from mapping
 				var err error
-				toolResult, err = a.CallMCP_tool(serverID, tc.Function.Name, tc.Function.Arguments)
+				toolResult, err = a.CallMCP_tool(realServerID, tc.Function.Name, tc.Function.Arguments)
 				if err != nil {
 					toolResult = &model.ToolCallResult{
-						ToolName:   toolName,
-						ServerName: serverNameMap[serverID],
+						ToolName:   realToolName,
+						ServerName: serverNameMap[realServerID],
 						Error:      err.Error(),
 					}
 				} else {
-					toolResult.ServerName = serverNameMap[serverID]
+					toolResult.ServerName = serverNameMap[realServerID]
+				}
+			} else {
+				// Fallback: try extracting from FQ name (shouldn't normally reach here)
+				toolResult = &model.ToolCallResult{
+					ToolName:   extractToolName(tc.Function.Name),
+					Error:      "tool not found in mapping",
 				}
 			}
 			// Truncate result to prevent context overflow (10000 chars max)
@@ -1303,6 +1343,17 @@ func extractToolName(fqToolName string) string {
 	return fqToolName
 }
 
+// resolveMCPToolName looks up the original (serverID, toolName) for a sanitized FQ name.
+func (a *App) resolveMCPToolName(sanitizedFQName string) (serverID, toolName string, ok bool) {
+	a.mcpToolMu.RLock()
+	defer a.mcpToolMu.RUnlock()
+	m, found := a.mcpToolMap[sanitizedFQName]
+	if !found {
+		return "", "", false
+	}
+	return m.serverID, m.toolName, true
+}
+
 // executeBuiltInTool executes a built-in tool and returns the result
 func (a *App) executeBuiltInTool(toolName string, arguments string) *model.ToolCallResult {
 	startTime := time.Now()
@@ -1474,7 +1525,11 @@ func (a *App) MCPServerConnect(id string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get server: %w", err)
 	}
-	return a.mcpClient.Connect(context.Background(), server)
+	if err := a.mcpClient.Connect(context.Background(), server); err != nil {
+		return err
+	}
+	server.Enabled = true
+	return a.mcpServerSvc.UpdateMCPServer(server)
 }
 
 // ConnectMCPServerFromConfig 从配置连接MCP服务器（内部使用）
@@ -1484,7 +1539,15 @@ func (a *App) ConnectMCPServerFromConfig(server *model.MCPServer) error {
 
 // MCPServerDisconnect 断开MCP服务器连接
 func (a *App) MCPServerDisconnect(id string) error {
-	return a.mcpClient.Disconnect(id)
+	if err := a.mcpClient.Disconnect(id); err != nil {
+		return err
+	}
+	server, err := a.mcpServerSvc.GetMCPServer(id)
+	if err != nil {
+		return fmt.Errorf("failed to get server: %w", err)
+	}
+	server.Enabled = false
+	return a.mcpServerSvc.UpdateMCPServer(server)
 }
 
 // MCPServerGetStatus 获取MCP服务器连接状态
@@ -1550,6 +1613,12 @@ func (a *App) GetEnabledMCPTools() []model.Tool {
 				for _, tool := range mcpTools {
 					// Prefix tool name with server ID for routing
 					fqName := makeMCPToolName(server.ID, tool.Name)
+
+					// Store mapping from sanitized FQ name to original serverID + toolName
+					a.mcpToolMu.Lock()
+					a.mcpToolMap[fqName] = mcpToolMapping{serverID: server.ID, toolName: tool.Name}
+					a.mcpToolMu.Unlock()
+
 					allTools = append(allTools, model.Tool{
 						Type: "function",
 						Function: model.FunctionDef{
@@ -1629,15 +1698,21 @@ func (a *App) CallMCP_tool(serverID, fqToolName, arguments string) (*model.ToolC
 	// Log with truncated arguments for security (avoid leaking sensitive data)
 	log.Printf("[MCP CallMCP_tool] serverID=%s, fqToolName=%s, arguments=%s", serverID, fqToolName, truncateLog(arguments, 200))
 
-	// Extract original tool name from fully qualified name
-	originalToolName := extractToolName(fqToolName)
-	extractedServerID := extractServerID(fqToolName)
-
-	log.Printf("[MCP CallMCP_tool] Extracted serverID=%s, toolName=%s", extractedServerID, originalToolName)
-
-	// Use extracted serverID if not provided
-	if serverID == "" && extractedServerID != "" {
-		serverID = extractedServerID
+	// Resolve original serverID and toolName from mapping
+	originalToolName := fqToolName
+	if realServerID, realToolName, ok := a.resolveMCPToolName(fqToolName); ok {
+		originalToolName = realToolName
+		if serverID == "" {
+			serverID = realServerID
+		}
+		log.Printf("[MCP CallMCP_tool] Resolved serverID=%s, toolName=%s", serverID, originalToolName)
+	} else {
+		log.Printf("[MCP CallMCP_tool] Warning: tool name not found in mapping, falling back to extract")
+		originalToolName = extractToolName(fqToolName)
+		extractedServerID := extractServerID(fqToolName)
+		if serverID == "" && extractedServerID != "" {
+			serverID = extractedServerID
+		}
 	}
 
 	// Parse arguments using the helper method

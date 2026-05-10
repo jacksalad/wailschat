@@ -497,6 +497,7 @@ async function connectMCPServer(id: string) {
     const {MCPServerConnect} = await import('../../wailsjs/go/main/App')
     await MCPServerConnect(id)
     mcpConnectionStatus.value[id] = 'connected'
+    await loadMCPServers()
   } catch (e: any) {
     mcpConnectionStatus.value[id] = 'error'
     mcpConnectionError.value[id] = e.toString()
@@ -509,6 +510,7 @@ async function disconnectMCPServer(id: string) {
     const {MCPServerDisconnect} = await import('../../wailsjs/go/main/App')
     await MCPServerDisconnect(id)
     mcpConnectionStatus.value[id] = 'disconnected'
+    await loadMCPServers()
   } catch (e) {
     console.error('Failed to disconnect MCP server:', e)
   }
@@ -1618,15 +1620,15 @@ async function remove(id: number) {
                 </div>
                 <div class="flex gap-2 flex-shrink-0 ml-2">
                   <button
-                    v-if="server.enabled && mcpConnectionStatus[server.id] !== 'connected'"
+                    v-if="mcpConnectionStatus[server.id] !== 'connected' && mcpConnectionStatus[server.id] !== 'connecting'"
                     @click="connectMCPServer(server.id)"
                     :disabled="mcpConnectionStatus[server.id] === 'connecting'"
                     class="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 text-sm disabled:opacity-50"
                   >
-                    {{ mcpConnectionStatus[server.id] === 'connecting' ? 'Connecting...' : 'Connect' }}
+                    Connect
                   </button>
                   <button
-                    v-if="server.enabled && mcpConnectionStatus[server.id] === 'connected'"
+                    v-if="mcpConnectionStatus[server.id] === 'connected'"
                     @click="disconnectMCPServer(server.id)"
                     class="text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 text-sm"
                   >

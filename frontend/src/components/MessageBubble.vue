@@ -6,6 +6,7 @@ import {Copy, RefreshCw, BarChart3, Check, X, ChevronDown, ChevronRight, Loader2
 import type {PerformanceStats, MCPToolCall, MCPToolResult} from '../stores/message'
 import {useSettingsStore} from '../stores/settings'
 import {formatRelativeTime} from '../utils/format'
+import {FetchImageAsBase64} from '../../wailsjs/go/main/App'
 
 const props = defineProps<{
   message: {
@@ -222,10 +223,47 @@ const menuItems = ref<MenuItem[]>([])
 const markdownRef = ref<InstanceType<typeof MarkdownMessage> | null>(null)
 const menuSelectedText = ref('')
 
+async function copyImageToClipboard(imgSrc: string) {
+  // Try canvas approach first (works for data URIs and same-origin/CORS-enabled images)
+  try {
+    await copyImageViaCanvas(imgSrc)
+    return
+  } catch {}
+
+  // Fallback: use Go backend to fetch the image (bypasses CORS)
+  const base64DataUri = await FetchImageAsBase64(imgSrc)
+  await copyImageViaCanvas(base64DataUri)
+}
+
+function copyImageViaCanvas(imgSrc: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      const ctx = canvas.getContext('2d')
+      if (!ctx) { reject(new Error('Canvas context unavailable')); return }
+      ctx.drawImage(img, 0, 0)
+      canvas.toBlob(blob => {
+        if (!blob) { reject(new Error('Blob creation failed')); return }
+        navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(resolve).catch(reject)
+      }, 'image/png')
+    }
+    img.onerror = () => reject(new Error('Image load failed'))
+    img.src = imgSrc
+  })
+}
+
 function onContextMenu(e: MouseEvent) {
   e.preventDefault()
   menuX.value = e.clientX
   menuY.value = e.clientY
+
+  const target = e.target as HTMLElement
+  const isRightClickOnImage = target.tagName === 'IMG' && (target.closest('.message-images') || target.closest('.markdown-body'))
+  const imgSrc = isRightClickOnImage ? (target as HTMLImageElement).src : ''
 
   const sel = window.getSelection()
   const selected = sel?.toString().trim() || ''
@@ -234,7 +272,26 @@ function onContextMenu(e: MouseEvent) {
   const copyTarget = selected || props.message.content
   const quoteTarget = selected || props.message.content
 
-  if (isUser.value) {
+  if (isRightClickOnImage) {
+    const items: MenuItem[] = [
+      { label: 'Copy Image', icon: Copy, action: () => { copyImageToClipboard(imgSrc).catch(err => console.error('Copy image failed:', err)) } },
+    ]
+    if (isUser.value) {
+      items.push({ label: 'Edit', icon: Pencil, action: () => startEdit() })
+      items.push({ label: 'Copy Text', icon: ClipboardCopy, action: () => { navigator.clipboard.writeText(copyTarget).catch(() => {}) } })
+      items.push({ label: 'Quote', icon: Quote, action: () => emit('quote', quoteTarget) })
+      items.push({ divider: true })
+      items.push({ label: 'Retry from here', icon: RefreshCw, action: () => emit('retryFromUser', String(props.message.id)) })
+    } else {
+      items.push({ label: 'Copy Text', icon: ClipboardCopy, action: () => { navigator.clipboard.writeText(selected || getPlainText()).catch(() => {}) } })
+      items.push({ label: 'Quote', icon: Quote, action: () => emit('quote', quoteTarget) })
+      if (props.isLastAssistant && !props.streaming) {
+        items.push({ divider: true })
+        items.push({ label: 'Retry', icon: RefreshCw, action: () => emit('retry', String(props.message.id)) })
+      }
+    }
+    menuItems.value = items
+  } else if (isUser.value) {
     menuItems.value = [
       { label: 'Edit', icon: Pencil, action: () => startEdit() },
       { label: 'Copy', icon: Copy, action: () => { navigator.clipboard.writeText(copyTarget).catch(() => {}) } },

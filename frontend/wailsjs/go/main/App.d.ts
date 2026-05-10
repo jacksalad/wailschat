@@ -21,6 +21,8 @@ export function DeleteSession(arg1:number):Promise<void>;
 
 export function EditAndResendMessage(arg1:number,arg2:string,arg3:string,arg4:Array<string>):Promise<string>;
 
+export function FetchImageAsBase64(arg1:string):Promise<string>;
+
 export function GetDefaultStyles():Promise<string>;
 
 export function GetEnabledMCPTools():Promise<Array<model.Tool>>;

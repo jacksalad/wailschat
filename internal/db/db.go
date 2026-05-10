@@ -192,8 +192,8 @@ html.dark .ai-bubble {
 .message-content { }
 .message-images { }
 .message-actions { }
-.copy-btn { }
-.copy-btn:hover { }
+.code-header .copy-btn { }
+.code-header .copy-btn:hover { }
 .retry-btn { }
 .retry-btn:hover { }
 .stats-btn { }
@@ -342,17 +342,17 @@ html.dark .code-lang {
   letter-spacing: 0.05em;
   transition: background-color var(--transition-speed) ease;
 }
-.copy-btn {
+.code-header .copy-btn {
   color: var(--text-secondary-light, #64748b);
 }
-.copy-btn:hover {
+.code-header .copy-btn:hover {
   background-color: var(--border-color-light, #cbd5e1);
   color: var(--text-primary-light, #1e293b);
 }
-html.dark .copy-btn {
+html.dark .code-header .copy-btn {
   color: var(--text-secondary-dark, #94a3b8);
 }
-html.dark .copy-btn:hover {
+html.dark .code-header .copy-btn:hover {
   background-color: var(--border-color-dark, #1e293b);
   color: var(--text-primary-dark, #e2e8f0);
 }

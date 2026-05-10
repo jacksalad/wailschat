@@ -88,10 +88,12 @@ export const useSessionStore = defineStore('session', () => {
 
   // Move a session to the top of the local list (for UI responsiveness)
   function moveToTop(sessionId: number) {
+    const session = sessions.value.find(s => s.id === sessionId)
+    if (!session) return
+    session.updated_at = new Date().toISOString()
     const idx = sessions.value.findIndex(s => s.id === sessionId)
     if (idx > 0) {
-      const [session] = sessions.value.splice(idx, 1)
-      session.updated_at = new Date().toISOString()
+      sessions.value.splice(idx, 1)
       sessions.value.unshift(session)
     }
   }

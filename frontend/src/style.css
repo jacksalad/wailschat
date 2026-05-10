@@ -594,10 +594,10 @@ html.dark {
   letter-spacing: 0.05em;
   transition: background-color 0.15s;
 }
-.copy-btn {
+.code-header .copy-btn {
   color: #64748b;
 }
-.copy-btn:hover {
+.code-header .copy-btn:hover {
   background-color: #cbd5e1;
   color: #1e293b;
 }
@@ -618,10 +618,10 @@ html.dark .code-header {
 html.dark .code-lang {
   color: #94a3b8;
 }
-html.dark .copy-btn {
+html.dark .code-header .copy-btn {
   color: #94a3b8;
 }
-html.dark .copy-btn:hover {
+html.dark .code-header .copy-btn:hover {
   background-color: #1e293b;
   color: #e2e8f0;
 }

@@ -24,6 +24,10 @@ func (s *Service) Create(sess *model.Session) error {
 		return fmt.Errorf("session: create: %w", err)
 	}
 	sess.ID, _ = result.LastInsertId()
+	row := s.db.QueryRow("SELECT created_at, updated_at FROM sessions WHERE id = ?", sess.ID)
+	if err := row.Scan(&sess.CreatedAt, &sess.UpdatedAt); err != nil {
+		return fmt.Errorf("session: scan timestamps: %w", err)
+	}
 	return nil
 }
 

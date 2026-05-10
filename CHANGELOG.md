@@ -9,6 +9,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 - GitHub Actions CI/CD for automatic multi-platform builds
 
+## [v1.4.0] - 2026-05-11
+
+### Added
+- Linux distribution compilation support with platform-specific notification module
+- MCP tool manual toggle persistence, auto-saving enabled state after connect/disconnect
+
+### Changed
+- UI styling refinement and unification, improved chat input spacing and code block copy button styles
+
+### Fixed
+- Session list time not refreshing when conversation is updated
+- MCP tool connection and routing mapping issue
+
 ## [v1.3.0] - 2026-05-05
 
 ### Added
