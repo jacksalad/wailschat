@@ -9,6 +9,8 @@ export function CallMCP_tool(arg1:string,arg2:string,arg3:string):Promise<model.
 
 export function CancelMessage(arg1:number):Promise<void>;
 
+export function CancelSelection(arg1:string):Promise<void>;
+
 export function ClearSessionMessages(arg1:number):Promise<void>;
 
 export function ConnectMCPServerFromConfig(arg1:model.MCPServer):Promise<void>;
@@ -17,9 +19,13 @@ export function CreateSession(arg1:number,arg2:string,arg3:string,arg4:any):Prom
 
 export function DeleteProvider(arg1:number):Promise<void>;
 
+export function DeleteSelectionChannel(arg1:string):Promise<any|boolean>;
+
 export function DeleteSession(arg1:number):Promise<void>;
 
 export function EditAndResendMessage(arg1:number,arg2:string,arg3:string,arg4:Array<string>):Promise<string>;
+
+export function EmitSelectionRequest(arg1:string,arg2:string,arg3:string,arg4:Array<Record<string, string>>,arg5:any,arg6:number):Promise<void>;
 
 export function FetchImageAsBase64(arg1:string):Promise<string>;
 
@@ -79,7 +85,11 @@ export function PromptUpdate(arg1:model.Prompt):Promise<model.Prompt>;
 
 export function ReadImageAsBase64(arg1:string):Promise<string>;
 
+export function RegisterSelectionChannel(arg1:string,arg2:any):Promise<void>;
+
 export function ReorderSessions(arg1:Array<number>):Promise<void>;
+
+export function RespondToSelection(arg1:string,arg2:Array<string>):Promise<void>;
 
 export function RetryFromUserMessage(arg1:number,arg2:string):Promise<string>;
 

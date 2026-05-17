@@ -1,5 +1,5 @@
 import {defineStore} from 'pinia'
-import {ref} from 'vue'
+import {ref, triggerRef} from 'vue'
 import {
   GetHistory,
   SendMessage,
@@ -8,6 +8,8 @@ import {
   RetryFromUserMessage,
   EditAndResendMessage,
   ClearSessionMessages,
+  RespondToSelection,
+  CancelSelection,
 } from '../../wailsjs/go/main/App'
 import {EventsOn, EventsOff} from '../../wailsjs/runtime/runtime'
 import {useSessionStore} from './session'
@@ -35,6 +37,15 @@ export interface MCPToolResult {
   duration_ms: number
 }
 
+export interface SelectionRequest {
+  request_id: string
+  prompt: string
+  type: 'radio' | 'checkbox'
+  options: Array<{label: string, value: string}>
+  default_value?: string | string[]
+  session_id: number
+}
+
 export interface Message {
   id: string  // Changed from number to string to support UUID
   session_id: number
@@ -43,6 +54,7 @@ export interface Message {
   reasoning_content?: string  // Reasoning/thinking content from models like DeepSeek R1
   images?: string
   stats?: string     // JSON string from DB
+  parsedStats?: PerformanceStats  // Pre-parsed stats (computed once at load time)
   created_at: string
   tool_calls?: MCPToolCall[]
   tool_results?: MCPToolResult[]
@@ -69,24 +81,30 @@ export const useMessageStore = defineStore('message', () => {
   // MCP tool call state
   const activeToolCalls = ref<Map<number, MCPToolCall[]>>(new Map())
   const activeToolResults = ref<Map<number, MCPToolResult[]>>(new Map())
+  // Selection request state
+  const pendingSelection = ref<SelectionRequest | null>(null)
 
   async function loadHistory(sessionId: number) {
     if (loadedSessions.value.has(sessionId)) return
     const raw = await GetHistory(sessionId) || []
     // Parse JSON string fields back to arrays
     // Ensure id is always a string for consistent comparison
-    const history: Message[] = raw.map((m: any) => ({
-      id: String(m.id),
-      session_id: m.session_id,
-      role: m.role,
-      content: m.content,
-      reasoning_content: m.reasoning_content || undefined,
-      images: m.images,
-      stats: m.stats,
-      created_at: m.created_at,
-      tool_calls: m.tool_calls ? JSON.parse(m.tool_calls) : undefined,
-      tool_results: m.tool_results ? JSON.parse(m.tool_results) : undefined,
-    }))
+    const history: Message[] = raw.map((m: any) => {
+      const stats = m.stats ? parseStats(m.stats) : undefined
+      return {
+        id: String(m.id),
+        session_id: m.session_id,
+        role: m.role,
+        content: m.content,
+        reasoning_content: m.reasoning_content || undefined,
+        images: m.images,
+        stats: m.stats,
+        parsedStats: stats,
+        created_at: m.created_at,
+        tool_calls: m.tool_calls ? JSON.parse(m.tool_calls) : undefined,
+        tool_results: m.tool_results ? JSON.parse(m.tool_results) : undefined,
+      }
+    })
     messages.value.set(sessionId, history)
     loadedSessions.value.add(sessionId)
   }
@@ -94,14 +112,39 @@ export const useMessageStore = defineStore('message', () => {
   function setupStreamListeners(sessionId: number) {
     let pendingStats: PerformanceStats | null = null
 
+    // RAF-based aggregation: buffer chunks and flush once per animation frame
+    let contentBuffer = ''
+    let reasoningBuffer = ''
+    let rafId = 0
+
+    const flushBuffers = () => {
+      rafId = 0
+      if (contentBuffer) {
+        streamingContent.value += contentBuffer
+        contentBuffer = ''
+      }
+      if (reasoningBuffer) {
+        streamingReasoning.value += reasoningBuffer
+        reasoningBuffer = ''
+      }
+    }
+
+    const scheduleFlush = () => {
+      if (!rafId) {
+        rafId = requestAnimationFrame(flushBuffers)
+      }
+    }
+
     EventsOn('message_chunk', (sid: number, chunk: string) => {
       if (sid === streamingSessionId.value) {
-        streamingContent.value += chunk
+        contentBuffer += chunk
+        scheduleFlush()
       }
     })
     EventsOn('message_reasoning', (sid: number, chunk: string) => {
       if (sid === streamingSessionId.value) {
-        streamingReasoning.value += chunk
+        reasoningBuffer += chunk
+        scheduleFlush()
       }
     })
     EventsOn('message_stats', (sid: number, stats: PerformanceStats) => {
@@ -135,8 +178,25 @@ export const useMessageStore = defineStore('message', () => {
         activeToolResults.value.set(sid, [...results])
       }
     })
+    EventsOn('selection_request', (request: SelectionRequest) => {
+      pendingSelection.value = request
+    })
     EventsOn('message_done', (sid: number, savedMessageId?: string) => {
       if (sid === streamingSessionId.value) {
+        // Flush any remaining buffered chunks before finalizing
+        if (rafId) {
+          cancelAnimationFrame(rafId)
+          rafId = 0
+        }
+        if (contentBuffer) {
+          streamingContent.value += contentBuffer
+          contentBuffer = ''
+        }
+        if (reasoningBuffer) {
+          streamingReasoning.value += reasoningBuffer
+          reasoningBuffer = ''
+        }
+
         const toolCalls = activeToolCalls.value.get(sid) || []
         const toolResults = activeToolResults.value.get(sid) || []
         const statsJSON = pendingStats ? JSON.stringify(pendingStats) : ''
@@ -148,13 +208,15 @@ export const useMessageStore = defineStore('message', () => {
           content: streamingContent.value,
           reasoning_content: streamingReasoning.value || undefined,
           stats: statsJSON,
+          parsedStats: pendingStats || undefined,
           created_at: new Date().toISOString(),
           tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
           tool_results: toolResults.length > 0 ? toolResults : undefined,
         }
         const msgs = messages.value.get(sid) || []
         msgs.push(assistantMsg)
-        messages.value.set(sid, [...msgs])
+        messages.value.set(sid, msgs)
+        triggerRef(messages)
 
         streamingContent.value = ''
         streamingReasoning.value = ''
@@ -169,6 +231,14 @@ export const useMessageStore = defineStore('message', () => {
     })
     EventsOn('message_error', (sid: number, errMsg: string) => {
       if (sid === streamingSessionId.value) {
+        // Cancel any pending RAF flush
+        if (rafId) {
+          cancelAnimationFrame(rafId)
+          rafId = 0
+        }
+        contentBuffer = ''
+        reasoningBuffer = ''
+
         const errorMsg: Message = {
           id: generateMessageId(),
           session_id: sid,
@@ -178,7 +248,8 @@ export const useMessageStore = defineStore('message', () => {
         }
         const msgs = messages.value.get(sid) || []
         msgs.push(errorMsg)
-        messages.value.set(sid, [...msgs])
+        messages.value.set(sid, msgs)
+        triggerRef(messages)
         streamingContent.value = ''
         streamingReasoning.value = ''
         liveStats.value = null
@@ -207,7 +278,8 @@ export const useMessageStore = defineStore('message', () => {
     }
     const sessionMessages = messages.value.get(sessionId) || []
     sessionMessages.push(userMsg)
-    messages.value.set(sessionId, [...sessionMessages])
+    messages.value.set(sessionId, sessionMessages)
+    triggerRef(messages)
 
     // Start streaming
     streamingContent.value = ''
@@ -232,7 +304,8 @@ export const useMessageStore = defineStore('message', () => {
         const lastMsg = msgs[msgs.length - 1]
         if (lastMsg && lastMsg.role === 'user' && lastMsg.id === optimisticId) {
           lastMsg.id = savedId
-          messages.value.set(sessionId, [...msgs])
+          messages.value.set(sessionId, msgs)
+          triggerRef(messages)
         }
       }
     } catch (e: any) {
@@ -318,7 +391,8 @@ export const useMessageStore = defineStore('message', () => {
     }
     const remainingMsgs = messages.value.get(sessionId) || []
     remainingMsgs.push(userMsg)
-    messages.value.set(sessionId, [...remainingMsgs])
+    messages.value.set(sessionId, remainingMsgs)
+    triggerRef(messages)
 
     // Start streaming
     streamingContent.value = ''
@@ -341,7 +415,8 @@ export const useMessageStore = defineStore('message', () => {
         const lastMsg = currentMsgs[currentMsgs.length - 1]
         if (lastMsg && lastMsg.role === 'user' && lastMsg.id === optimisticId) {
           lastMsg.id = newId
-          messages.value.set(sessionId, [...currentMsgs])
+          messages.value.set(sessionId, currentMsgs)
+          triggerRef(messages)
         }
       }
     } catch (e: any) {
@@ -377,7 +452,8 @@ export const useMessageStore = defineStore('message', () => {
     }
     const remainingMsgs = messages.value.get(sessionId) || []
     remainingMsgs.push(userMsg)
-    messages.value.set(sessionId, [...remainingMsgs])
+    messages.value.set(sessionId, remainingMsgs)
+    triggerRef(messages)
 
     streamingContent.value = ''
     streamingReasoning.value = ''
@@ -397,7 +473,8 @@ export const useMessageStore = defineStore('message', () => {
         const lastMsg = currentMsgs[currentMsgs.length - 1]
         if (lastMsg && lastMsg.role === 'user' && lastMsg.id === optimisticId) {
           lastMsg.id = newId
-          messages.value.set(sessionId, [...currentMsgs])
+          messages.value.set(sessionId, currentMsgs)
+          triggerRef(messages)
         }
       }
     } catch (e: any) {
@@ -425,6 +502,25 @@ export const useMessageStore = defineStore('message', () => {
     EventsOff('message_stats')
     EventsOff('mcp_tool_call_start')
     EventsOff('mcp_tool_result')
+    EventsOff('selection_request')
+  }
+
+  async function respondToSelection(requestID: string, selectedValues: string[]) {
+    try {
+      await RespondToSelection(requestID, selectedValues)
+    } catch (e) {
+      console.error('Failed to respond to selection:', e)
+    }
+    pendingSelection.value = null
+  }
+
+  async function cancelSelectionRequest(requestID: string) {
+    try {
+      await CancelSelection(requestID)
+    } catch (e) {
+      console.error('Failed to cancel selection:', e)
+    }
+    pendingSelection.value = null
   }
 
   function getMessages(sessionId: number): Message[] {
@@ -477,5 +573,6 @@ export const useMessageStore = defineStore('message', () => {
     loadHistory, sendMessage, retryMessage, retryFromUserMessage, editAndResendMessage, cancelStream,
     getMessages, getStats, parseStats, clearSession, clearHistory,
     getActiveToolCalls, getActiveToolResults,
+    pendingSelection, respondToSelection, cancelSelectionRequest,
   }
 })

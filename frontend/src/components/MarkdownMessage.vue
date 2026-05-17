@@ -38,7 +38,7 @@ watch(rendered, (newHtml) => {
     if (renderTimer) clearTimeout(renderTimer)
     renderTimer = setTimeout(() => {
       debouncedRendered.value = newHtml
-    }, 80)
+    }, 150)
   } else {
     debouncedRendered.value = newHtml
   }
@@ -321,7 +321,7 @@ function setupMermaidInteraction(container: HTMLElement) {
   container.style.cursor = 'grab'
 }
 
-// Render all mermaid blocks in parallel
+// Render all mermaid blocks sequentially to avoid blocking the main thread
 async function renderMermaidBlocks() {
   if (!containerRef.value) return
 
@@ -331,7 +331,12 @@ async function renderMermaidBlocks() {
 
   if (blocks.length === 0) return
 
-  await Promise.all(blocks.map(block => renderMermaidBlock(block, true)))
+  // Render one at a time, yielding to the browser between each
+  for (const block of blocks) {
+    await renderMermaidBlock(block, true)
+    // Yield to browser to keep UI responsive
+    await new Promise(resolve => setTimeout(resolve, 0))
+  }
 }
 
 // Watch for rendered content changes — skip mermaid during streaming

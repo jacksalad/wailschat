@@ -56,6 +56,12 @@ type ToolCallResult struct {
 	DurationMs int64  `json:"duration_ms"`
 }
 
+// SelectionResponse is the response from a user selection interaction.
+type SelectionResponse struct {
+	Selected  []string `json:"selected"`
+	Cancelled bool     `json:"cancelled,omitempty"`
+}
+
 // MCPServerTestResult 测试连接结果
 type MCPServerTestResult struct {
 	Success bool      `json:"success"`

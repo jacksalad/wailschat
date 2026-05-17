@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import {ref, onMounted, onBeforeUnmount, computed} from 'vue'
+import {ref, reactive, onMounted, onBeforeUnmount, computed, nextTick} from 'vue'
 import {useProviderStore, type Provider} from '../stores/provider'
 import {usePromptStore, type Prompt} from '../stores/prompt'
 import {useSettingsStore, type Theme, type ShortcutBindings} from '../stores/settings'
@@ -44,6 +44,7 @@ const toolEnabled = ref(settingsStore.toolEnabled === '1' || settingsStore.toolE
 const toolFileRead = ref(settingsStore.toolFileRead === '1' || settingsStore.toolFileRead === 'true')
 const toolFileWrite = ref(settingsStore.toolFileWrite === '1' || settingsStore.toolFileWrite === 'true')
 const toolShellExec = ref(settingsStore.toolShellExec === '1' || settingsStore.toolShellExec === 'true')
+const toolProvideSelection = ref(settingsStore.toolProvideSelection === '1' || settingsStore.toolProvideSelection === 'true')
 const notifyOnComplete = ref(settingsStore.notifyOnComplete === '1' || settingsStore.notifyOnComplete === 'true')
 const showMessageTime = ref(settingsStore.showMessageTime === '1' || settingsStore.showMessageTime === 'true')
 const generalSaved = ref(false)
@@ -428,9 +429,9 @@ const mcpTestResult = ref<model.MCPServerTestResult | null>(null)
 const mcpTesting = ref(false)
 const mcpSaving = ref(false)
 
-// MCP connection status
-const mcpConnectionStatus = ref<Record<string, 'connected' | 'disconnected' | 'connecting' | 'error'>>({})
-const mcpConnectionError = ref<Record<string, string>>({})
+// MCP connection status (reactive for deep property tracking)
+const mcpConnectionStatus = reactive<Record<string, 'connected' | 'disconnected' | 'connecting' | 'disconnecting' | 'error'>>({})
+const mcpConnectionError = reactive<Record<string, string>>({})
 
 // MCP form validation
 const mcpValidationError = ref<string | null>(null)
@@ -483,36 +484,38 @@ async function loadMCPServerStatuses() {
   try {
     const {MCPServerGetAllStatuses} = await import('../../wailsjs/go/main/App')
     const statuses = await MCPServerGetAllStatuses() as Record<string, 'connected' | 'disconnected' | 'connecting' | 'error'>
-    mcpConnectionStatus.value = statuses
+    // Merge into reactive object (clear stale keys first)
+    Object.keys(mcpConnectionStatus).forEach(k => delete mcpConnectionStatus[k])
+    Object.assign(mcpConnectionStatus, statuses)
   } catch (e) {
     console.error('Failed to load MCP server statuses:', e)
   }
 }
 
-// Connect to an MCP server
+// Connect to an MCP server — only updates status, never reloads the list
 async function connectMCPServer(id: string) {
-  mcpConnectionStatus.value[id] = 'connecting'
-  mcpConnectionError.value[id] = ''
+  mcpConnectionStatus[id] = 'connecting'
+  mcpConnectionError[id] = ''
   try {
     const {MCPServerConnect} = await import('../../wailsjs/go/main/App')
     await MCPServerConnect(id)
-    mcpConnectionStatus.value[id] = 'connected'
-    await loadMCPServers()
+    mcpConnectionStatus[id] = 'connected'
   } catch (e: any) {
-    mcpConnectionStatus.value[id] = 'error'
-    mcpConnectionError.value[id] = e.toString()
+    mcpConnectionStatus[id] = 'error'
+    mcpConnectionError[id] = e.toString()
   }
 }
 
-// Disconnect from an MCP server
+// Disconnect from an MCP server — only updates status, never reloads the list
 async function disconnectMCPServer(id: string) {
+  mcpConnectionStatus[id] = 'disconnecting'
   try {
     const {MCPServerDisconnect} = await import('../../wailsjs/go/main/App')
     await MCPServerDisconnect(id)
-    mcpConnectionStatus.value[id] = 'disconnected'
-    await loadMCPServers()
+    mcpConnectionStatus[id] = 'disconnected'
   } catch (e) {
-    console.error('Failed to disconnect MCP server:', e)
+    mcpConnectionStatus[id] = 'error'
+    mcpConnectionError[id] = e instanceof Error ? e.message : String(e)
   }
 }
 
@@ -600,6 +603,9 @@ async function deleteMCPServer(id: string) {
   try {
     const {MCPServerDelete} = await import('../../wailsjs/go/main/App')
     await MCPServerDelete(id)
+    // Clean up status for deleted server
+    delete mcpConnectionStatus[id]
+    delete mcpConnectionError[id]
     await loadMCPServers()
   } catch (e) {
     console.error('Failed to delete MCP server:', e)
@@ -717,6 +723,7 @@ async function saveGeneral() {
     tool_file_read: toolFileRead.value ? '1' : '0',
     tool_file_write: toolFileWrite.value ? '1' : '0',
     tool_shell_exec: toolShellExec.value ? '1' : '0',
+    tool_provide_selection: toolProvideSelection.value ? '1' : '0',
     notify_on_complete: notifyOnComplete.value ? '1' : '0',
     show_message_time: showMessageTime.value ? '1' : '0',
   })
@@ -1197,6 +1204,28 @@ async function remove(id: number) {
                 </div>
               </div>
 
+              <!-- Tool: Provide Selection -->
+              <div class="flex items-center justify-between pl-2">
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">Provide Selection</label>
+                  <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Allow AI to present choices (radio/checkbox) for interactive selection</p>
+                </div>
+                <button
+                  @click="toolProvideSelection = !toolProvideSelection"
+                  :class="[
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    toolProvideSelection ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
+                  ]"
+                >
+                  <span
+                    :class="[
+                      'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                      toolProvideSelection ? 'translate-x-6' : 'translate-x-1'
+                    ]"
+                  />
+                </button>
+              </div>
+
               <!-- Completion Notification -->
               <div class="flex items-center justify-between pl-2">
                 <div>
@@ -1595,19 +1624,21 @@ async function remove(id: number) {
                     <span class="font-medium text-slate-800 dark:text-white">{{ server.name }}</span>
                     <span v-if="server.enabled" class="px-1.5 py-0.5 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded">Enabled</span>
                     <span v-else class="px-1.5 py-0.5 text-xs bg-slate-100 dark:bg-slate-600 text-slate-500 dark:text-slate-400 rounded">Disabled</span>
-                    <!-- Connection status -->
+                    <!-- Connection status badge -->
                     <span
                       v-if="server.enabled"
                       :class="[
-                        'px-1.5 py-0.5 text-xs rounded',
+                        'px-1.5 py-0.5 text-xs rounded transition-colors duration-200',
                         mcpConnectionStatus[server.id] === 'connected' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
                         mcpConnectionStatus[server.id] === 'connecting' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' :
+                        mcpConnectionStatus[server.id] === 'disconnecting' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' :
                         mcpConnectionStatus[server.id] === 'error' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
                         'bg-slate-100 dark:bg-slate-600 text-slate-500 dark:text-slate-400'
                       ]"
                     >
                       {{ mcpConnectionStatus[server.id] === 'connected' ? 'Connected' :
                          mcpConnectionStatus[server.id] === 'connecting' ? 'Connecting...' :
+                         mcpConnectionStatus[server.id] === 'disconnecting' ? 'Disconnecting...' :
                          mcpConnectionStatus[server.id] === 'error' ? 'Error' : 'Disconnected' }}
                     </span>
                   </div>
@@ -1620,22 +1651,22 @@ async function remove(id: number) {
                 </div>
                 <div class="flex gap-2 flex-shrink-0 ml-2">
                   <button
-                    v-if="mcpConnectionStatus[server.id] !== 'connected' && mcpConnectionStatus[server.id] !== 'connecting'"
+                    v-if="mcpConnectionStatus[server.id] !== 'connected' && mcpConnectionStatus[server.id] !== 'connecting' && mcpConnectionStatus[server.id] !== 'disconnecting'"
                     @click="connectMCPServer(server.id)"
-                    :disabled="mcpConnectionStatus[server.id] === 'connecting'"
-                    class="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 text-sm disabled:opacity-50"
+                    class="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 text-sm"
                   >
                     Connect
                   </button>
                   <button
-                    v-if="mcpConnectionStatus[server.id] === 'connected'"
+                    v-if="mcpConnectionStatus[server.id] === 'connected' || mcpConnectionStatus[server.id] === 'disconnecting'"
                     @click="disconnectMCPServer(server.id)"
-                    class="text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 text-sm"
+                    :disabled="mcpConnectionStatus[server.id] === 'disconnecting'"
+                    class="text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 text-sm disabled:opacity-50"
                   >
-                    Disconnect
+                    {{ mcpConnectionStatus[server.id] === 'disconnecting' ? 'Disconnecting...' : 'Disconnect' }}
                   </button>
-                  <button @click="openMCPEdit(server)" class="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-sm">Edit</button>
-                  <button @click="deleteMCPServer(server.id)" class="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-sm">Delete</button>
+                  <button @click="openMCPEdit(server)" :disabled="mcpConnectionStatus[server.id] === 'connecting' || mcpConnectionStatus[server.id] === 'disconnecting'" class="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-sm disabled:opacity-50">Edit</button>
+                  <button @click="deleteMCPServer(server.id)" :disabled="mcpConnectionStatus[server.id] === 'connecting' || mcpConnectionStatus[server.id] === 'disconnecting'" class="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-sm disabled:opacity-50">Delete</button>
                 </div>
               </div>
             </div>

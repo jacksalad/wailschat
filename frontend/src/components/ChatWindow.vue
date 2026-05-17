@@ -11,6 +11,7 @@ import {OnFileDrop, OnFileDropOff} from '../../wailsjs/runtime/runtime'
 import MessageBubble from './MessageBubble.vue'
 import ChatInput from './ChatInput.vue'
 import SearchBar from './SearchBar.vue'
+import SelectionPanel from './SelectionPanel.vue'
 import logoUrl from '../assets/logo.png'
 
 const sessionStore = useSessionStore()
@@ -125,15 +126,14 @@ const lastAssistantMessageId = computed(() => {
   return null
 })
 
-// Pre-compute stats map to avoid JSON.parse per message per render
+// Pre-compute stats map using cached parsedStats (no JSON.parse per render)
 const statsMap = computed(() => {
   const map = new Map<string, PerformanceStats>()
   const sid = sessionStore.currentSessionId
   if (!sid) return map
   const msgs = messageStore.getMessages(sid)
   for (const msg of msgs) {
-    const stats = messageStore.parseStats(msg.stats)
-    if (stats) map.set(msg.id, stats)
+    if (msg.parsedStats) map.set(msg.id, msg.parsedStats)
   }
   return map
 })
@@ -347,6 +347,36 @@ async function editAndResend(messageId: string, newContent: string, newImages: s
 function onQuote(content: string) {
   quoteText.value = content
 }
+
+// Filter out provide_selection from the MCP loading indicator
+const activeNonSelectionTools = computed(() => {
+  const sid = sessionStore.currentSessionId
+  if (!sid) return []
+  return messageStore.getActiveToolCalls(sid).filter(t => cleanToolName(t.name) !== 'provide_selection')
+})
+
+// Extract tool name from FQ name (serverID___toolName)
+function cleanToolName(fqName: string): string {
+  const idx = fqName.indexOf('___')
+  if (idx >= 0 && idx + 3 < fqName.length) {
+    return fqName.substring(idx + 3)
+  }
+  return fqName
+}
+
+function onSelectionConfirm(requestID: string, selectedValues: string[]) {
+  messageStore.respondToSelection(requestID, selectedValues)
+}
+
+function onSelectionCancel(requestID: string) {
+  messageStore.cancelSelectionRequest(requestID)
+}
+
+// Auto-scroll when selection panel appears
+watch(() => messageStore.pendingSelection, async () => {
+  await nextTick()
+  scrollToBottom()
+})
 </script>
 
 <template>
@@ -463,17 +493,25 @@ function onQuote(content: string) {
               <span class="animate-pulse">Thinking...</span>
             </div>
           </div>
-          <!-- Active MCP tool calls during streaming -->
-          <div v-if="messageStore.isStreaming && messageStore.getActiveToolCalls(sessionStore.currentSessionId!).length > 0" class="mcp-tools-loading flex justify-start">
+          <!-- Active MCP tool calls during streaming (excluding provide_selection which has its own UI) -->
+          <div v-if="messageStore.isStreaming && activeNonSelectionTools.length > 0" class="mcp-tools-loading flex justify-start">
             <div class="mcp-loading-badge bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl px-4 py-3 text-blue-600 dark:text-blue-400">
               <div class="flex items-center gap-2">
                 <Loader2 class="w-4 h-4 animate-spin" />
                 <span class="text-sm">Calling MCP tools...</span>
               </div>
               <div class="mt-1 text-xs text-blue-500 dark:text-blue-300">
-                {{ messageStore.getActiveToolCalls(sessionStore.currentSessionId!).map(t => t.name).join(', ') }}
+                {{ activeNonSelectionTools.map(t => cleanToolName(t.name)).join(', ') }}
               </div>
             </div>
+          </div>
+          <!-- Active Selection Panel -->
+          <div v-if="messageStore.pendingSelection" class="flex justify-start">
+            <SelectionPanel
+              :request="messageStore.pendingSelection"
+              @confirm="onSelectionConfirm"
+              @cancel="onSelectionCancel"
+            />
           </div>
         </div>
       </div>

@@ -44,10 +44,24 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   async function deleteSession(id: number) {
-    await DeleteSession(id)
+    // --- Optimistic update ---
+    // 1. Snapshot current state for rollback
+    const prevSessions = [...sessions.value]
+    const prevCurrentId = currentSessionId.value
+
+    // 2. Immediately remove from UI
     sessions.value = sessions.value.filter(s => s.id !== id)
     if (currentSessionId.value === id) {
       currentSessionId.value = sessions.value.length > 0 ? sessions.value[0].id : null
+    }
+
+    // 3. Fire backend call; rollback on failure
+    try {
+      await DeleteSession(id)
+    } catch (e) {
+      console.error('deleteSession error, rolling back:', e)
+      sessions.value = prevSessions
+      currentSessionId.value = prevCurrentId
     }
   }
 

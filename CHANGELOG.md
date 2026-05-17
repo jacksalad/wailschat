@@ -9,6 +9,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 - GitHub Actions CI/CD for automatic multi-platform builds
 
+## [v1.5.0] - 2026-05-18
+
+### Added
+- Image thumbnail lightbox preview — click any image in chat to view full-size in an overlay
+- Built-in `provide_selection` tool allowing AI models to present interactive single-choice (radio) and multi-choice (checkbox) selections to the user
+- `SelectionPanel` component with confirm/cancel actions and default value support
+- Window maximum size constraint (7680x4320) for Linux desktop environment maximize compatibility
+
+### Changed
+- Streaming chunk delivery now uses batched emission (~50ms intervals) to reduce Go↔JS IPC overhead
+- Frontend chunk rendering uses `requestAnimationFrame` aggregation instead of per-chunk DOM updates
+- Sidebar resize drag uses `requestAnimationFrame` for smoother interaction
+- Message store uses `triggerRef` instead of array spread for reactivity, reducing unnecessary copies
+- Stats parsing is done once at load time (`parsedStats` field) instead of on every render
+- MCP server name mapping is cached and refreshed on connect/disconnect instead of queried per message
+- Provider, history, and system prompt are loaded in parallel during `SendMessage`
+
+### Fixed
+- Streaming content race condition where `message_done` could fire before all chunks were flushed to the frontend
+- Sidebar resize performance jitter on rapid mouse movement
+
 ## [v1.4.0] - 2026-05-11
 
 ### Added

@@ -44,10 +44,12 @@ async function selectSession(id: number) {
   await messageStore.loadHistory(id)
 }
 
-async function deleteSession(id: number, e?: Event) {
+function deleteSession(id: number, e?: Event) {
   e?.stopPropagation()
+  // Optimistically clear messages and remove session from list.
+  // The store handles rollback on backend failure automatically.
   messageStore.clearSession(id)
-  await sessionStore.deleteSession(id)
+  sessionStore.deleteSession(id) // fire-and-forget; store is optimistic
 }
 
 function onContextMenu(e: MouseEvent, session: { id: number; name: string }) {

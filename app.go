@@ -29,8 +29,8 @@ import (
 	"wailschat/internal/message"
 	"wailschat/internal/model"
 	"wailschat/internal/notify"
-	"wailschat/internal/provider"
 	"wailschat/internal/prompt"
+	"wailschat/internal/provider"
 	"wailschat/internal/session"
 	"wailschat/internal/settings"
 	"wailschat/internal/tools"
@@ -42,21 +42,24 @@ type mcpToolMapping struct {
 }
 
 type App struct {
-	ctx          context.Context
-	db           *sql.DB
-	providerSvc  *provider.Service
-	promptSvc    *prompt.Service
-	sessionSvc   *session.Service
-	messageSvc   *message.Service
-	settingsSvc  *settings.Service
-	mcpServerSvc *db.MCPServerService
-	mcpClient    *mcp.Client
-	llmClient    *llm.Client
-	cancelFuncs  sync.Map
-	toolManager             *tools.Manager
-	wasMaxBeforeFullscreen  bool
-	mcpToolMu               sync.RWMutex
-	mcpToolMap              map[string]mcpToolMapping // sanitizedFQName -> {serverID, toolName}
+	ctx                    context.Context
+	db                     *sql.DB
+	providerSvc            *provider.Service
+	promptSvc              *prompt.Service
+	sessionSvc             *session.Service
+	messageSvc             *message.Service
+	settingsSvc            *settings.Service
+	mcpServerSvc           *db.MCPServerService
+	mcpClient              *mcp.Client
+	llmClient              *llm.Client
+	cancelFuncs            sync.Map
+	toolManager            *tools.Manager
+	wasMaxBeforeFullscreen bool
+	mcpToolMu              sync.RWMutex
+	mcpToolMap             map[string]mcpToolMapping // sanitizedFQName -> {serverID, toolName}
+	serverNameMu           sync.RWMutex
+	serverNameCache        map[string]string // serverID -> name (cached)
+	selectionChannels      sync.Map          // requestID -> chan model.SelectionResponse
 }
 
 func NewApp() *App {
@@ -66,11 +69,50 @@ func NewApp() *App {
 	cmdBlacklist := tools.DefaultCommandBlacklist()
 
 	return &App{
-		llmClient:   llm.NewClient(),
-		mcpClient:   mcp.NewClient(),
-		toolManager: tools.NewManager(allowedDirs, cmdBlacklist),
-		mcpToolMap:  make(map[string]mcpToolMapping),
+		llmClient:       llm.NewClient(),
+		mcpClient:       mcp.NewClient(),
+		toolManager:     tools.NewManager(allowedDirs, cmdBlacklist),
+		mcpToolMap:      make(map[string]mcpToolMapping),
+		serverNameCache: make(map[string]string),
 	}
+}
+
+// getServerNameMap returns the cached server ID -> name map.
+// If the cache is empty, it refreshes from DB.
+func (a *App) getServerNameMap() map[string]string {
+	a.serverNameMu.RLock()
+	if len(a.serverNameCache) > 0 {
+		// Return a snapshot
+		result := make(map[string]string, len(a.serverNameCache))
+		for k, v := range a.serverNameCache {
+			result[k] = v
+		}
+		a.serverNameMu.RUnlock()
+		return result
+	}
+	a.serverNameMu.RUnlock()
+
+	// Cache miss — refresh
+	return a.refreshServerNameCache()
+}
+
+func (a *App) refreshServerNameCache() map[string]string {
+	m := make(map[string]string)
+	if servers, err := a.mcpServerSvc.ListMCPServers(); err == nil {
+		for _, s := range servers {
+			m[s.ID] = s.Name
+		}
+	}
+	a.serverNameMu.Lock()
+	a.serverNameCache = m
+	a.serverNameMu.Unlock()
+
+	// Return a snapshot
+	result := make(map[string]string, len(m))
+	for k, v := range m {
+		result[k] = v
+	}
+	return result
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -89,8 +131,9 @@ func (a *App) startup(ctx context.Context) {
 	a.settingsSvc = settings.NewService(database)
 	a.mcpServerSvc = db.NewMCPServerService(database)
 
+	wailsRuntime.WindowSetMaxSize(ctx, 7680, 4320)
 	// Register built-in tools
-	tools.RegisterBuiltInTools(a.toolManager)
+	tools.RegisterBuiltInTools(a.toolManager, a)
 
 	// Restore window position for non-maximised windows
 	// (Size and maximised state are already set via options in main.go)
@@ -681,20 +724,36 @@ func (a *App) SendMessage(sessionID int64, content string, images []string) (str
 		go a.generateTitleAsync(sessionID, content, sess)
 	}
 
-	// Load provider
-	p, err := a.providerSvc.GetByID(sess.ProviderID)
-	if err != nil {
-		return "", fmt.Errorf("send message: get provider: %w", err)
+	// Parallelize independent DB queries: provider, history, system prompt
+	var (
+		provider     *model.Provider
+		history      []model.Message
+		systemPrompt string
+		providerErr  error
+		historyErr   error
+	)
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		provider, providerErr = a.providerSvc.GetByID(sess.ProviderID)
+	}()
+	go func() {
+		defer wg.Done()
+		history, historyErr = a.messageSvc.GetBySession(sessionID)
+	}()
+	// resolveSystemPrompt does DB queries too but is fast; run inline
+	systemPrompt = a.resolveSystemPrompt(sessionID)
+	wg.Wait()
+
+	if providerErr != nil {
+		return "", fmt.Errorf("send message: get provider: %w", providerErr)
+	}
+	if historyErr != nil {
+		return "", fmt.Errorf("send message: get history: %w", historyErr)
 	}
 
-	// Load all messages for context
-	history, err := a.messageSvc.GetBySession(sessionID)
-	if err != nil {
-		return "", fmt.Errorf("send message: get history: %w", err)
-	}
-
-	// Resolve system prompt for this session
-	systemPrompt := a.resolveSystemPrompt(sessionID)
 	chatMsgs := buildChatMessages(history, systemPrompt)
 
 	// Set up cancellation - generous timeout for reasoning models that can think for many minutes.
@@ -709,7 +768,7 @@ func (a *App) SendMessage(sessionID int64, content string, images []string) (str
 			cancel()
 		}()
 
-		a.streamAndSave(ctx, sessionID, sess, p, chatMsgs)
+		a.streamAndSave(ctx, sessionID, sess, provider, chatMsgs)
 	}()
 
 	return fmt.Sprintf("%d", userMsg.ID), nil
@@ -910,6 +969,93 @@ func (a *App) ReorderSessions(orderedIDs []int64) error {
 	return a.sessionSvc.ReorderSessions(orderedIDs)
 }
 
+// chunkBatcher buffers streaming chunks and flushes them in batches to reduce IPC overhead.
+// Instead of one EventsEmit per SSE chunk (~30-60/sec), it batches and emits every ~50ms.
+type chunkBatcher struct {
+	ctx       context.Context
+	sessionID int64
+	ch        chan chunkPair
+	done      chan struct{}
+}
+
+type chunkPair struct {
+	content   string
+	reasoning string
+}
+
+func newChunkBatcher(ctx context.Context, sessionID int64) *chunkBatcher {
+	b := &chunkBatcher{
+		ctx:       ctx,
+		sessionID: sessionID,
+		ch:        make(chan chunkPair, 64),
+		done:      make(chan struct{}),
+	}
+	go b.flushLoop()
+	return b
+}
+
+func (b *chunkBatcher) flushLoop() {
+	defer close(b.done)
+	var contentBuf strings.Builder
+	var reasoningBuf strings.Builder
+	contentBuf.Grow(4096)
+	reasoningBuf.Grow(1024)
+	timer := time.NewTimer(50 * time.Millisecond)
+	defer timer.Stop()
+
+	flush := func() {
+		c := contentBuf.String()
+		r := reasoningBuf.String()
+		if c != "" {
+			wailsRuntime.EventsEmit(b.ctx, "message_chunk", b.sessionID, c)
+		}
+		if r != "" {
+			wailsRuntime.EventsEmit(b.ctx, "message_reasoning", b.sessionID, r)
+		}
+		contentBuf.Reset()
+		reasoningBuf.Reset()
+	}
+
+	for {
+		select {
+		case p, ok := <-b.ch:
+			if !ok {
+				flush()
+				return
+			}
+			if p.content != "" {
+				contentBuf.WriteString(p.content)
+			}
+			if p.reasoning != "" {
+				reasoningBuf.WriteString(p.reasoning)
+			}
+			// Flush immediately if buffer is large enough
+			if contentBuf.Len() > 512 || reasoningBuf.Len() > 512 {
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				flush()
+				timer.Reset(50 * time.Millisecond)
+			}
+		case <-timer.C:
+			timer.Reset(50 * time.Millisecond)
+			flush()
+		}
+	}
+}
+
+func (b *chunkBatcher) emit(chunk, reasoningChunk string) {
+	b.ch <- chunkPair{content: chunk, reasoning: reasoningChunk}
+}
+
+func (b *chunkBatcher) close() {
+	close(b.ch)
+	<-b.done
+}
+
 // streamAndSave is the shared streaming logic for SendMessage and RetryMessage.
 // It handles MCP tool calling loop integration.
 func (a *App) streamAndSave(
@@ -928,19 +1074,17 @@ func (a *App) streamAndSave(
 	// Get enabled MCP tools
 	tools := a.GetEnabledMCPTools()
 
-	// Build server ID -> name mapping for UI display
-	serverNameMap := make(map[string]string)
-	if servers, err := a.mcpServerSvc.ListMCPServers(); err == nil {
-		for _, s := range servers {
-			serverNameMap[s.ID] = s.Name
-		}
-	}
+	// Build server ID -> name mapping for UI display (cached)
+	serverNameMap := a.getServerNameMap()
 
 	// Tool call handling state - track for persistence
 	var toolCalls []model.ToolCall
 	toolCallMap := make(map[string]model.ToolCall) // id -> toolCall
 	var allToolCalls []model.ToolCall              // all tool calls made during this session
 	var allToolResults []*model.ToolCallResult     // all tool results received
+
+	// Initialize chunk batcher to reduce IPC overhead
+	batcher := newChunkBatcher(a.ctx, sessionID)
 
 	stats, err := a.llmClient.StreamChat(ctx, p.BaseURL, p.APIKey, sess.Model, chatMsgs,
 		func(chunk string, reasoningChunk string, newToolCalls []model.ToolCall, finishReason string) {
@@ -956,15 +1100,13 @@ func (a *App) streamAndSave(
 				}
 			}
 
-			if chunk != "" {
-				wailsRuntime.EventsEmit(a.ctx, "message_chunk", sessionID, chunk)
-			}
-			if reasoningChunk != "" {
-				wailsRuntime.EventsEmit(a.ctx, "message_reasoning", sessionID, reasoningChunk)
+			if chunk != "" || reasoningChunk != "" {
+				batcher.emit(chunk, reasoningChunk)
 			}
 		}, tools)
 
 	if err != nil {
+		batcher.close()
 		wailsRuntime.EventsEmit(a.ctx, "message_error", sessionID, err.Error())
 		a.notifyIfEnabled(sess.Name, "生成出错")
 		return
@@ -985,6 +1127,7 @@ func (a *App) streamAndSave(
 		select {
 		case <-ctx.Done():
 			log.Printf("[MCP] Context cancelled, exiting tool call loop")
+			batcher.close()
 			wailsRuntime.EventsEmit(a.ctx, "message_error", sessionID, "context cancelled")
 			return
 		default:
@@ -1034,8 +1177,8 @@ func (a *App) streamAndSave(
 			} else {
 				// Fallback: try extracting from FQ name (shouldn't normally reach here)
 				toolResult = &model.ToolCallResult{
-					ToolName:   extractToolName(tc.Function.Name),
-					Error:      "tool not found in mapping",
+					ToolName: extractToolName(tc.Function.Name),
+					Error:    "tool not found in mapping",
 				}
 			}
 			// Truncate result to prevent context overflow (10000 chars max)
@@ -1097,11 +1240,8 @@ func (a *App) streamAndSave(
 						toolCallMap[tc.ID] = tc
 					}
 				}
-				if chunk != "" {
-					wailsRuntime.EventsEmit(a.ctx, "message_chunk", sessionID, chunk)
-				}
-				if reasoningChunk != "" {
-					wailsRuntime.EventsEmit(a.ctx, "message_reasoning", sessionID, reasoningChunk)
+				if chunk != "" || reasoningChunk != "" {
+					batcher.emit(chunk, reasoningChunk)
 				}
 			}, tools)
 
@@ -1116,6 +1256,7 @@ func (a *App) streamAndSave(
 				// 继续下一次迭代，而不是直接返回
 				continue
 			}
+			batcher.close()
 			wailsRuntime.EventsEmit(a.ctx, "message_error", sessionID, err.Error())
 			return
 		}
@@ -1168,7 +1309,12 @@ func (a *App) streamAndSave(
 		log.Printf("Failed to save assistant message: %v", saveErr)
 	}
 
-	// (Title generation moved to SendMessage — runs right after user sends message)
+	// Flush and close the batcher BEFORE emitting message_done.
+	// This ensures all streaming chunks have been delivered to the frontend
+	// before the frontend finalizes the message. Without this, a race condition
+	// causes the frontend to finalize with incomplete content (while the DB save
+	// is correct since fullContent is accumulated synchronously).
+	batcher.close()
 
 	// Emit message_done with the saved message ID (as string for frontend compatibility)
 	wailsRuntime.EventsEmit(a.ctx, "message_done", sessionID, fmt.Sprintf("%d", assistantMsg.ID))
@@ -1529,6 +1675,7 @@ func (a *App) MCPServerConnect(id string) error {
 		return err
 	}
 	server.Enabled = true
+	a.refreshServerNameCache() // Invalidate cache
 	return a.mcpServerSvc.UpdateMCPServer(server)
 }
 
@@ -1547,6 +1694,7 @@ func (a *App) MCPServerDisconnect(id string) error {
 		return fmt.Errorf("failed to get server: %w", err)
 	}
 	server.Enabled = false
+	a.refreshServerNameCache() // Invalidate cache
 	return a.mcpServerSvc.UpdateMCPServer(server)
 }
 
@@ -1657,14 +1805,19 @@ func (a *App) isToolEnabledByName(toolName string) bool {
 	}
 	// Map tool names to setting keys
 	settingKey := map[string]string{
-		"file_read":  "tool_file_read",
-		"file_write": "tool_file_write",
-		"shell_exec": "tool_shell_exec",
+		"file_read":          "tool_file_read",
+		"file_write":         "tool_file_write",
+		"shell_exec":         "tool_shell_exec",
+		"provide_selection":  "tool_provide_selection",
 	}[toolName]
 	if settingKey == "" {
 		return false
 	}
 	enabled := settings[settingKey]
+	// provide_selection defaults to enabled when setting is absent
+	if enabled == "" && toolName == "provide_selection" {
+		return true
+	}
 	return enabled == "1" || enabled == "true"
 }
 
@@ -1765,4 +1918,60 @@ func (a *App) CallMCP_tool(serverID, fqToolName, arguments string) (*model.ToolC
 		Result:     result.Result,
 		DurationMs: time.Since(startTime).Milliseconds(),
 	}, nil
+}
+
+// --- SelectionResponder interface implementation ---
+
+// RegisterSelectionChannel stores the response channel for a pending selection.
+func (a *App) RegisterSelectionChannel(requestID string, ch chan model.SelectionResponse) {
+	a.selectionChannels.Store(requestID, ch)
+}
+
+// DeleteSelectionChannel removes and returns the channel for the given request.
+func (a *App) DeleteSelectionChannel(requestID string) (chan model.SelectionResponse, bool) {
+	val, ok := a.selectionChannels.LoadAndDelete(requestID)
+	if !ok {
+		return nil, false
+	}
+	return val.(chan model.SelectionResponse), true
+}
+
+// EmitSelectionRequest emits a Wails event to the frontend to show the selection UI.
+func (a *App) EmitSelectionRequest(requestID, prompt, selectionType string, options []map[string]string, defaultValue any, sessionID int64) {
+	wailsRuntime.EventsEmit(a.ctx, "selection_request", map[string]any{
+		"request_id":    requestID,
+		"prompt":        prompt,
+		"type":          selectionType,
+		"options":       options,
+		"default_value": defaultValue,
+		"session_id":    sessionID,
+	})
+}
+
+// --- Selection RPC Methods ---
+
+// RespondToSelection is called by the frontend when the user confirms a selection.
+func (a *App) RespondToSelection(requestID string, selectedValues []string) error {
+	ch, ok := a.selectionChannels.LoadAndDelete(requestID)
+	if !ok {
+		return fmt.Errorf("selection request not found or already responded: %s", requestID)
+	}
+	ch.(chan model.SelectionResponse) <- model.SelectionResponse{
+		Selected:  selectedValues,
+		Cancelled: false,
+	}
+	return nil
+}
+
+// CancelSelection is called by the frontend when the user cancels a selection.
+func (a *App) CancelSelection(requestID string) error {
+	ch, ok := a.selectionChannels.LoadAndDelete(requestID)
+	if !ok {
+		return fmt.Errorf("selection request not found or already responded: %s", requestID)
+	}
+	ch.(chan model.SelectionResponse) <- model.SelectionResponse{
+		Selected:  []string{},
+		Cancelled: true,
+	}
+	return nil
 }

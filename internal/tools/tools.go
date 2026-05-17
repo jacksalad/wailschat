@@ -152,14 +152,16 @@ func DefaultCommandBlacklist() []string {
 // tools stores registered tools by name
 var tools = make(map[string]Tool)
 
-// RegisterBuiltInTools registers all built-in tools with the manager
-func RegisterBuiltInTools(manager *Manager) {
+// RegisterBuiltInTools registers all built-in tools with the manager.
+// responder is used by provide_selection to communicate with the frontend.
+func RegisterBuiltInTools(manager *Manager, responder SelectionResponder) {
 	manager.Register(NewFileRead(manager))
 	manager.Register(NewFileWrite(manager))
 	manager.Register(NewShellExec(manager))
+	manager.Register(NewProvideSelection(responder))
 }
 
 // GetBuiltInToolNames returns the names of all built-in tools
 func GetBuiltInToolNames() []string {
-	return []string{"file_read", "file_write", "shell_exec"}
+	return []string{"file_read", "file_write", "shell_exec", "provide_selection"}
 }

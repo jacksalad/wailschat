@@ -42,6 +42,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const toolFileRead = computed(() => settings.value.get('tool_file_read') || '0')
   const toolFileWrite = computed(() => settings.value.get('tool_file_write') || '0')
   const toolShellExec = computed(() => settings.value.get('tool_shell_exec') || '0')
+  const toolProvideSelection = computed(() => settings.value.get('tool_provide_selection') || '1')
   const notifyOnComplete = computed(() => settings.value.get('notify_on_complete') || '0')
   const showMessageTime = computed(() => settings.value.get('show_message_time') || '0')
   const selectedTheme = computed(() => settings.value.get('selected_theme') || 'Default')
@@ -283,7 +284,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   return {
     settings, settingsError, hasError, systemPrompt, fontFamily, fontSize, chatWidth, theme, customStyles,
-    bgImage, bgOpacity, sidebarWidth, shortcuts, toolEnabled, toolFileRead, toolFileWrite, toolShellExec, notifyOnComplete, showMessageTime, selectedTheme,
+    bgImage, bgOpacity, sidebarWidth, shortcuts, toolEnabled, toolFileRead, toolFileWrite, toolShellExec, toolProvideSelection, notifyOnComplete, showMessageTime, selectedTheme,
     fetchSettings, retryFetchSettings, saveSettings, applyToDOM, applyCustomStyles, applyBackgroundImage, setTheme,
     systemFonts, fontsLoaded, loadSystemFonts, clearBgImageCache,
   }

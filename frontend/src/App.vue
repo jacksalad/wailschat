@@ -99,6 +99,8 @@ function onGlobalKeydown(e: KeyboardEvent) {
 }
 
 // Sidebar resize handlers
+let resizeRaf = 0
+
 function onResizeStart(e: MouseEvent) {
   e.preventDefault()
   isResizing.value = true
@@ -109,7 +111,11 @@ function onResizeStart(e: MouseEvent) {
 function onMouseMove(e: MouseEvent) {
   if (!isResizing.value) return
   const newWidth = Math.min(500, Math.max(200, e.clientX))
-  sidebarWidth.value = newWidth
+  if (resizeRaf) return
+  resizeRaf = requestAnimationFrame(() => {
+    resizeRaf = 0
+    sidebarWidth.value = newWidth
+  })
 }
 
 function onMouseUp() {

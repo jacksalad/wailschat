@@ -2,7 +2,16 @@ package tools
 
 import (
 	"testing"
+
+	"wailschat/internal/model"
 )
+
+// mockSelectionResponder is a test mock for SelectionResponder
+type mockSelectionResponder struct{}
+
+func (m *mockSelectionResponder) RegisterSelectionChannel(requestID string, ch chan model.SelectionResponse)                    {}
+func (m *mockSelectionResponder) DeleteSelectionChannel(requestID string) (chan model.SelectionResponse, bool)                  { return nil, false }
+func (m *mockSelectionResponder) EmitSelectionRequest(string, string, string, []map[string]string, any, int64)                 {}
 
 func TestNewManager(t *testing.T) {
 	allowedDirs := []string{"/tmp", "/home/test"}
@@ -15,12 +24,12 @@ func TestNewManager(t *testing.T) {
 	}
 
 	// Register built-in tools
-	RegisterBuiltInTools(manager)
+	RegisterBuiltInTools(manager, &mockSelectionResponder{})
 
 	// Check that tools are registered
 	tools := manager.GetAllTools()
-	if len(tools) != 3 {
-		t.Errorf("Expected 3 registered tools, got %d", len(tools))
+	if len(tools) != 4 {
+		t.Errorf("Expected 4 registered tools, got %d", len(tools))
 	}
 
 	// Check that built-in tools are registered
@@ -29,7 +38,7 @@ func TestNewManager(t *testing.T) {
 		toolNames = append(toolNames, tool.Name())
 	}
 
-	expectedTools := []string{"file_read", "file_write", "shell_exec"}
+	expectedTools := []string{"file_read", "file_write", "shell_exec", "provide_selection"}
 	for _, expected := range expectedTools {
 		found := false
 		for _, name := range toolNames {
@@ -47,11 +56,11 @@ func TestNewManager(t *testing.T) {
 func TestGetBuiltInToolNames(t *testing.T) {
 	names := GetBuiltInToolNames()
 
-	if len(names) != 3 {
-		t.Errorf("Expected 3 built-in tool names, got %d", len(names))
+	if len(names) != 4 {
+		t.Errorf("Expected 4 built-in tool names, got %d", len(names))
 	}
 
-	expected := []string{"file_read", "file_write", "shell_exec"}
+	expected := []string{"file_read", "file_write", "shell_exec", "provide_selection"}
 	for i, name := range names {
 		if name != expected[i] {
 			t.Errorf("Expected tool name %s at index %d, got %s", expected[i], i, name)

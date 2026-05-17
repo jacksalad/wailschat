@@ -220,6 +220,12 @@ html.dark .stats-popup {
 .tool-call-args { }
 .tool-call-result { }
 
+/* ── Selection Panel ── */
+.selection-panel { }
+.selection-option { }
+.selection-confirm-btn { }
+.selection-cancel-btn { }
+
 /* ── Chat Input ── */
 .chat-input-area {
   border-color: var(--border-color-light, #e2e8f0);

@@ -14,6 +14,10 @@ export function CancelMessage(arg1) {
   return window['go']['main']['App']['CancelMessage'](arg1);
 }
 
+export function CancelSelection(arg1) {
+  return window['go']['main']['App']['CancelSelection'](arg1);
+}
+
 export function ClearSessionMessages(arg1) {
   return window['go']['main']['App']['ClearSessionMessages'](arg1);
 }
@@ -30,12 +34,20 @@ export function DeleteProvider(arg1) {
   return window['go']['main']['App']['DeleteProvider'](arg1);
 }
 
+export function DeleteSelectionChannel(arg1) {
+  return window['go']['main']['App']['DeleteSelectionChannel'](arg1);
+}
+
 export function DeleteSession(arg1) {
   return window['go']['main']['App']['DeleteSession'](arg1);
 }
 
 export function EditAndResendMessage(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['EditAndResendMessage'](arg1, arg2, arg3, arg4);
+}
+
+export function EmitSelectionRequest(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['EmitSelectionRequest'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function FetchImageAsBase64(arg1) {
@@ -154,8 +166,16 @@ export function ReadImageAsBase64(arg1) {
   return window['go']['main']['App']['ReadImageAsBase64'](arg1);
 }
 
+export function RegisterSelectionChannel(arg1, arg2) {
+  return window['go']['main']['App']['RegisterSelectionChannel'](arg1, arg2);
+}
+
 export function ReorderSessions(arg1) {
   return window['go']['main']['App']['ReorderSessions'](arg1);
+}
+
+export function RespondToSelection(arg1, arg2) {
+  return window['go']['main']['App']['RespondToSelection'](arg1, arg2);
 }
 
 export function RetryFromUserMessage(arg1, arg2) {

@@ -1,8 +1,8 @@
 <script lang="ts" setup>
-import {computed, ref, inject, nextTick, type Ref} from 'vue'
+import {computed, ref, inject, nextTick, onMounted, onUnmounted, type Ref} from 'vue'
 import MarkdownMessage from './MarkdownMessage.vue'
 import ContextMenu, {type MenuItem} from './ContextMenu.vue'
-import {Copy, RefreshCw, BarChart3, Check, X, ChevronDown, ChevronRight, Loader2, Wrench, Folder, Terminal, Brain, ClipboardCopy, Quote, Pencil} from 'lucide-vue-next'
+import {Copy, RefreshCw, BarChart3, Check, X, ChevronDown, ChevronRight, Loader2, Wrench, Folder, Terminal, Brain, ClipboardCopy, Quote, Pencil, ListChecks} from 'lucide-vue-next'
 import type {PerformanceStats, MCPToolCall, MCPToolResult} from '../stores/message'
 import {useSettingsStore} from '../stores/settings'
 import {formatRelativeTime} from '../utils/format'
@@ -186,12 +186,15 @@ function getToolIcon(toolName: string) {
   if (toolName === 'shell_exec') {
     return Terminal
   }
+  if (toolName === 'provide_selection') {
+    return ListChecks
+  }
   return Wrench
 }
 
 // Check if tool is built-in
 function isBuiltInTool(toolName: string): boolean {
-  return ['file_read', 'file_write', 'shell_exec'].includes(toolName)
+  return ['file_read', 'file_write', 'shell_exec', 'provide_selection'].includes(toolName)
 }
 
 function formatArgs(args: string): string {
@@ -214,6 +217,20 @@ function formatResult(result: string): string {
     return result
   }
 }
+
+// Image preview lightbox
+const previewImage = ref<string | null>(null)
+function openPreview(img: string) {
+  previewImage.value = img
+}
+function closePreview() {
+  previewImage.value = null
+}
+function handleLightboxKey(e: KeyboardEvent) {
+  if (e.key === 'Escape' && previewImage.value) closePreview()
+}
+onMounted(() => window.addEventListener('keydown', handleLightboxKey))
+onUnmounted(() => window.removeEventListener('keydown', handleLightboxKey))
 
 // Context menu
 const menuVisible = ref(false)
@@ -346,10 +363,11 @@ function getPlainText(): string {
               v-for="(img, index) in images"
               :key="index"
               :src="img"
-              class="max-w-[200px] max-h-[200px] rounded-lg object-contain"
+              class="max-w-[200px] max-h-[200px] rounded-lg object-contain cursor-pointer hover:opacity-80 transition-opacity"
               alt="Attached image"
               loading="lazy"
               decoding="async"
+              @click="openPreview(img)"
             />
           </div>
           <div class="message-content whitespace-pre-wrap"><template v-for="(seg, i) in userHighlightedSegments" :key="i"><mark v-if="seg.highlight" class="search-match">{{ seg.text }}</mark><span v-else>{{ seg.text }}</span></template></div>
@@ -387,10 +405,11 @@ function getPlainText(): string {
               v-for="(img, index) in images"
               :key="index"
               :src="img"
-              class="max-w-[200px] max-h-[200px] rounded-lg object-contain"
+              class="max-w-[200px] max-h-[200px] rounded-lg object-contain cursor-pointer hover:opacity-80 transition-opacity"
               alt="Attached image"
               loading="lazy"
               decoding="async"
+              @click="openPreview(img)"
             />
           </div>
           <textarea
@@ -426,10 +445,11 @@ function getPlainText(): string {
             v-for="(img, index) in images"
             :key="index"
             :src="img"
-            class="max-w-[200px] max-h-[200px] rounded-lg object-contain"
+            class="max-w-[200px] max-h-[200px] rounded-lg object-contain cursor-pointer hover:opacity-80 transition-opacity"
             alt="Attached image"
             loading="lazy"
             decoding="async"
+            @click="openPreview(img)"
           />
         </div>
         <div class="message-content-wrapper">
@@ -581,6 +601,20 @@ function getPlainText(): string {
     </div>
     </div>
     <ContextMenu :visible="menuVisible" :x="menuX" :y="menuY" :items="menuItems" @close="menuVisible = false" />
+    <!-- Image preview lightbox -->
+    <Teleport to="body">
+      <div
+        v-if="previewImage"
+        class="image-lightbox"
+        @click="closePreview"
+        @keydown.escape="closePreview"
+      >
+        <img :src="previewImage" class="lightbox-image" @click.stop />
+        <button class="lightbox-close" @click="closePreview">
+          <X class="w-5 h-5" />
+        </button>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -602,5 +636,47 @@ function getPlainText(): string {
   background-color: rgba(255, 212, 59, 0.4);
   border-radius: 2px;
   padding: 0 1px;
+}
+</style>
+
+<style>
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.85);
+  animation: lightbox-fade-in 0.15s ease-out;
+}
+.lightbox-image {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 4px;
+  user-select: none;
+}
+.lightbox-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: white;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+@keyframes lightbox-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 </style>
