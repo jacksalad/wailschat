@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [v1.6.0] - 2026-06-07
+
+### Changed
+- Lazy-load Mermaid (~1MB), KaTeX (~300KB), and 35 highlight.js language definitions — initial JS payload reduced from ~2MB+ to ~300KB
+- Lazy-load SettingsModal, SearchBar, and SelectionPanel components via `defineAsyncComponent`
+- Defer prompt store initialization from app startup to first ChatWindow mount
+- KaTeX CSS injected on demand instead of loaded globally
+- Add Vite `manualChunks` configuration for optimal code splitting
+
 ## [Unreleased]
 
 ### Added

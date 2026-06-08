@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import {computed, watch, nextTick, ref, onMounted, onBeforeUnmount, provide} from 'vue'
+import {computed, watch, nextTick, ref, onMounted, onBeforeUnmount, provide, defineAsyncComponent} from 'vue'
 import {useSessionStore} from '../stores/session'
 import {useMessageStore, type PerformanceStats} from '../stores/message'
 import {useProviderStore} from '../stores/provider'
@@ -10,8 +10,8 @@ import {Loader2, ChevronUp, ChevronDown, ArrowUp} from 'lucide-vue-next'
 import {OnFileDrop, OnFileDropOff} from '../../wailsjs/runtime/runtime'
 import MessageBubble from './MessageBubble.vue'
 import ChatInput from './ChatInput.vue'
-import SearchBar from './SearchBar.vue'
-import SelectionPanel from './SelectionPanel.vue'
+const SearchBar = defineAsyncComponent(() => import('./SearchBar.vue'))
+const SelectionPanel = defineAsyncComponent(() => import('./SelectionPanel.vue'))
 import logoUrl from '../assets/logo.png'
 
 const sessionStore = useSessionStore()
@@ -90,6 +90,8 @@ async function selectPrompt(promptId: number | null) {
 }
 
 onMounted(() => {
+  // Lazy-load prompts on first ChatWindow mount (deferred from App startup)
+  promptStore.fetchPrompts()
   document.addEventListener('click', onClickOutside)
   if (messagesContainer.value) {
     messagesContainer.value.addEventListener('scroll', onMessagesScroll, { passive: true })

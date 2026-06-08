@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import SessionList from './SessionList.vue'
-import SettingsModal from './SettingsModal.vue'
+import {defineAsyncComponent} from 'vue'
+const SettingsModal = defineAsyncComponent(() => import('./SettingsModal.vue'))
 import {useSessionStore} from '../stores/session'
 import {useProviderStore} from '../stores/provider'
 import {useSearchStore} from '../stores/search'

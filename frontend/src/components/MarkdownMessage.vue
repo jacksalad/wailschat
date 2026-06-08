@@ -1,15 +1,36 @@
 <script lang="ts" setup>
 import {computed, ref, watch, onMounted, nextTick, onBeforeUnmount} from 'vue'
-import {renderMarkdown} from '../utils/markdown'
-import mermaid from 'mermaid'
+import {renderMarkdown, onLazyLoad} from '../utils/markdown'
 
-// Initialize mermaid - theme will be dynamically set based on dark/light mode
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'default',
-  securityLevel: 'loose',
-  fontFamily: 'inherit',
-})
+// ── Lazy-loaded mermaid ──
+// Mermaid (~1MB+) is only needed when rendering flowchart code blocks.
+// Dynamic import avoids bundling it into the initial chunk.
+// Exception: content-type-specific module that may never be needed.
+import type {Mermaid} from 'mermaid'
+let mermaidInstance: Mermaid | null = null
+let mermaidLoadPromise: Promise<Mermaid> | null = null
+let mermaidInitialized = false
+
+function loadMermaid() {
+  if (!mermaidLoadPromise) mermaidLoadPromise = import('mermaid').then(mod => mod.default)
+  return mermaidLoadPromise
+}
+
+async function ensureMermaid() {
+  if (mermaidInstance) return mermaidInstance
+  const mermaid = await loadMermaid()
+  mermaidInstance = mermaid
+  if (!mermaidInitialized) {
+    mermaidInitialized = true
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'default',
+      securityLevel: 'loose',
+      fontFamily: 'inherit',
+    })
+  }
+  return mermaid
+}
 
 // Module-level SVG cache: keyed by preprocessed mermaid code → rendered SVG string
 const mermaidSvgCache = new Map<string, string>()
@@ -27,7 +48,19 @@ let mermaidIdCounter = 0
 // Track rendered mermaid blocks
 const renderedMermaidBlocks = ref<Set<HTMLElement>>(new Set())
 
-const rendered = computed(() => renderMarkdown(props.content))
+// Incrementing key to force re-render when lazy deps load
+const renderRevision = ref(0)
+
+const rendered = computed(() => {
+  // Access renderRevision to create reactive dependency
+  renderRevision.value
+  return renderMarkdown(props.content)
+})
+
+// Register callback for lazy dependency loads (KaTeX, hljs languages)
+onLazyLoad(() => {
+  renderRevision.value++
+})
 
 // Debounced rendering for streaming: coalesce multiple chunks into single renders
 const debouncedRendered = ref('')
@@ -150,6 +183,7 @@ async function renderMermaidBlock(block: HTMLElement, isAutoRender = false): Pro
   const id = `mermaid-${++mermaidIdCounter}-${Date.now()}`
 
   try {
+    const mermaid = await ensureMermaid()
     const { svg } = await mermaid.render(id, preprocessedCode)
 
     // Store in cache
