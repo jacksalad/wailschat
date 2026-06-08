@@ -58,7 +58,7 @@ const rendered = computed(() => {
 })
 
 // Register callback for lazy dependency loads (KaTeX, hljs languages)
-onLazyLoad(() => {
+const unregisterLazyLoad = onLazyLoad(() => {
   renderRevision.value++
 })
 
@@ -79,6 +79,7 @@ watch(rendered, (newHtml) => {
 
 onBeforeUnmount(() => {
   if (renderTimer) clearTimeout(renderTimer)
+  unregisterLazyLoad()
 })
 
 // Check if text contains non-ASCII characters (Chinese, etc.)

@@ -17,33 +17,31 @@ function loadKatex() {
   return katexPromise
 }
 
-/** Callback invoked when a lazy dependency loads and a re-render may be needed. */
-let onLazyLoadCallback: (() => void) | null = null
+/** Callbacks invoked when a lazy dependency loads and a re-render may be needed. */
+const lazyLoadCallbacks = new Set<() => void>()
 
-/** Register a callback to trigger re-render after lazy deps load (called once). */
-export function onLazyLoad(cb: () => void) {
-  onLazyLoadCallback = cb
+/** Register a callback to trigger re-render after lazy deps load. Returns an unregister function. */
+export function onLazyLoad(cb: () => void): () => void {
+  lazyLoadCallbacks.add(cb)
+  return () => { lazyLoadCallbacks.delete(cb) }
 }
 
-// Track whether KaTeX CSS has been injected
-let katexCssInjected = false
+// Track whether KaTeX CSS has been loaded
+let katexCssLoaded = false
 
-function ensureKatexCss() {
-  if (katexCssInjected) return
-  katexCssInjected = true
-  const link = document.createElement('link')
-  link.rel = 'stylesheet'
-  link.href = 'katex/dist/katex.min.css'
-  document.head.appendChild(link)
+async function ensureKatexCss() {
+  if (katexCssLoaded) return
+  katexCssLoaded = true
+  await import('katex/dist/katex.min.css')
 }
 
 // Eagerly start loading KaTeX; caller triggers re-render when ready.
 export function prefetchKatex() {
   if (katexModule) return
-  loadKatex().then(mod => {
+  loadKatex().then(async mod => {
     katexModule = mod
-    ensureKatexCss()
-    onLazyLoadCallback?.()
+    await ensureKatexCss()
+    lazyLoadCallbacks.forEach(cb => cb())
   })
 }
 
@@ -149,7 +147,7 @@ function highlightWithLang(str: string, lang: string): string | null {
           }
         }
         pendingLoads.delete(canonical)
-        onLazyLoadCallback?.()
+        lazyLoadCallbacks.forEach(cb => cb())
       })
       pendingLoads.set(canonical, loadPromise)
     }
