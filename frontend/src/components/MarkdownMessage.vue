@@ -1,39 +1,13 @@
 <script lang="ts" setup>
-import {computed, ref, watch, onMounted, nextTick, onBeforeUnmount} from 'vue'
-import {renderMarkdown, onLazyLoad} from '../utils/markdown'
+import {computed, ref, watch, onBeforeUnmount} from 'vue'
+import {renderMarkdown, onLazyLoad, mermaidCollapsed, preprocessMermaidCodeForToggle} from '../utils/markdown'
+import {BrowserOpenURL} from '../../wailsjs/runtime/runtime'
 
-// ── Lazy-loaded mermaid ──
-// Mermaid (~1MB+) is only needed when rendering flowchart code blocks.
-// Dynamic import avoids bundling it into the initial chunk.
-// Exception: content-type-specific module that may never be needed.
-import type {Mermaid} from 'mermaid'
-let mermaidInstance: Mermaid | null = null
-let mermaidLoadPromise: Promise<Mermaid> | null = null
-let mermaidInitialized = false
-
-function loadMermaid() {
-  if (!mermaidLoadPromise) mermaidLoadPromise = import('mermaid').then(mod => mod.default)
-  return mermaidLoadPromise
-}
-
-async function ensureMermaid() {
-  if (mermaidInstance) return mermaidInstance
-  const mermaid = await loadMermaid()
-  mermaidInstance = mermaid
-  if (!mermaidInitialized) {
-    mermaidInitialized = true
-    mermaid.initialize({
-      startOnLoad: false,
-      theme: 'default',
-      securityLevel: 'loose',
-      fontFamily: 'inherit',
-    })
-  }
-  return mermaid
-}
-
-// Module-level SVG cache: keyed by preprocessed mermaid code → rendered SVG string
-const mermaidSvgCache = new Map<string, string>()
+// Mermaid is rendered entirely inside renderMarkdown() via a reactive SVG cache
+// (mermaidSvgMap). This component no longer imperatively patches the DOM after
+// v-html binds — that old approach raced against v-html rebuilds (triggered by
+// lazy hljs/KaTeX loads) and silently wrote SVGs into detached nodes, so
+// diagrams intermittently failed to appear.
 
 const props = defineProps<{
   content: string
@@ -43,12 +17,9 @@ const props = defineProps<{
 
 const copiedIndex = ref(-1)
 const containerRef = ref<HTMLElement | null>(null)
-let mermaidIdCounter = 0
 
-// Track rendered mermaid blocks
-const renderedMermaidBlocks = ref<Set<HTMLElement>>(new Set())
-
-// Incrementing key to force re-render when lazy deps load
+// Incrementing key to force re-render when lazy deps (KaTeX, hljs languages)
+// finish loading, so their newly-available output gets rendered.
 const renderRevision = ref(0)
 
 const rendered = computed(() => {
@@ -57,7 +28,9 @@ const rendered = computed(() => {
   return renderMarkdown(props.content)
 })
 
-// Register callback for lazy dependency loads (KaTeX, hljs languages)
+// Register callback for lazy dependency loads (KaTeX, hljs languages).
+// Mermaid does NOT need this — its SVG lands in the reactive map that
+// `rendered` already reads, so it re-renders without this callback.
 const unregisterLazyLoad = onLazyLoad(() => {
   renderRevision.value++
 })
@@ -80,325 +53,115 @@ watch(rendered, (newHtml) => {
 onBeforeUnmount(() => {
   if (renderTimer) clearTimeout(renderTimer)
   unregisterLazyLoad()
+  // Remove drag listeners that were attached to the persistent document.
+  document.removeEventListener('mousemove', onDocMouseMove)
+  document.removeEventListener('mouseup', onDocMouseUp)
 })
 
-// Check if text contains non-ASCII characters (Chinese, etc.)
-function hasNonAscii(text: string): boolean {
-  return /[^\x00-\x7F]/.test(text)
-}
-
-// Preprocess mermaid code to fix Chinese text issues
-// Wraps text containing non-ASCII characters in [] or {} with double quotes
-// Example: [中文] -> ["中文"], {中文?} -> {"中文?"}
-function preprocessMermaidCode(code: string): string {
-  // Process [] brackets: match [content] where content has non-ASCII and not already quoted
-  let fixed = code.replace(/\[([^\]]*)\]/g, (match, content) => {
-    // Skip if already quoted
-    if (content.startsWith('"') || content.startsWith("'")) {
-      return match
-    }
-    // Add quotes if contains non-ASCII
-    if (hasNonAscii(content)) {
-      return `["${content}"]`
-    }
-    return match
-  })
-
-  // Process {} braces: match {content} where content has non-ASCII and not already quoted
-  fixed = fixed.replace(/\{([^}]*)\}/g, (match, content) => {
-    // Skip if already quoted
-    if (content.startsWith('"') || content.startsWith("'")) {
-      return match
-    }
-    // Skip if it's a style/class directive like { ... }
-    if (content.includes(':') || content.includes(';') || content.startsWith(' ')) {
-      return match
-    }
-    // Add quotes if contains non-ASCII
-    if (hasNonAscii(content)) {
-      return `{"${content}"}`
-    }
-    return match
-  })
-
-  return fixed
-}
-
-// Shared SVG icons
+// Copy button icons (toggled imperatively on click; buttons themselves come from v-html)
 const copyIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`
-const codeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`
+const copiedIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
 
-// Apply a rendered SVG to a mermaid block (shared between cached and fresh paths)
-function applyRenderedSvg(block: HTMLElement, svg: string) {
-  const originalContent = block.querySelector('.code-header')?.nextElementSibling?.outerHTML || ''
-  block.dataset.originalContent = originalContent
-
-  // Create a container for the rendered diagram
-  const wrapper = document.createElement('div')
-  wrapper.className = 'mermaid-rendered'
-  wrapper.innerHTML = svg
-
-  // Add interactive container for zoom/pan
-  const interactiveWrapper = document.createElement('div')
-  interactiveWrapper.className = 'mermaid-interactive'
-  interactiveWrapper.appendChild(wrapper)
-
-  // Replace the original block content
-  block.innerHTML = ''
-  block.appendChild(interactiveWrapper)
-
-  // Restore header with CODE button to switch back to code view
-  const header = document.createElement('div')
-  header.className = 'code-header'
-  header.innerHTML = `
-    <span class="code-lang">mermaid</span>
-    <div class="code-actions">
-      <button class="code-btn copy-btn" data-action="copy" title="Copy code">${copyIconSvg}</button>
-      <button class="code-btn run-btn" data-action="toggle-mermaid" title="Show code">${codeIconSvg}</button>
-    </div>
-  `
-  block.insertBefore(header, block.firstChild)
-  block.classList.add('rendered')
-
-  // Add wheel zoom and drag functionality
-  setupMermaidInteraction(interactiveWrapper)
-
-  renderedMermaidBlocks.value.add(block)
+// ── Mermaid zoom & drag (event delegation) ──
+// Because v-html rebuilds the inner DOM on every render, we cannot attach
+// listeners to individual .mermaid-interactive nodes. Instead the persistent
+// container handles wheel/mousedown via delegation; transform state lives in a
+// per-SVG WeakMap keyed by the (current) SVG element.
+interface DragState {
+  scale: number
+  translateX: number
+  translateY: number
 }
 
-// Render a single mermaid block
-async function renderMermaidBlock(block: HTMLElement, isAutoRender = false): Promise<boolean> {
-  const rawB64 = block.dataset.raw || ''
-  const code = decodeURIComponent(escape(atob(rawB64)))
+const svgStates = new WeakMap<SVGElement, DragState>()
+let dragging: { svg: SVGElement; state: DragState; startX: number; startY: number; baseTX: number; baseTY: number; wrapper: HTMLElement } | null = null
 
-  // Preprocess code to fix Chinese text
-  const preprocessedCode = preprocessMermaidCode(code.trim())
-
-  // Check cache first
-  const cachedSvg = mermaidSvgCache.get(preprocessedCode)
-  if (cachedSvg) {
-    applyRenderedSvg(block, cachedSvg)
-    return true
-  }
-
-  const id = `mermaid-${++mermaidIdCounter}-${Date.now()}`
-
-  try {
-    const mermaid = await ensureMermaid()
-    const { svg } = await mermaid.render(id, preprocessedCode)
-
-    // Store in cache
-    mermaidSvgCache.set(preprocessedCode, svg)
-
-    // Store preprocessed code for retry
-    block.dataset.preprocessedCode = preprocessedCode
-
-    applyRenderedSvg(block, svg)
-    return true
-  } catch (e) {
-    console.error('Mermaid render error:', e)
-    // If auto-render failed, don't modify the block at all - keep original code with RUN button
-    if (isAutoRender) {
-      return false
-    }
-
-    // If manual toggle failed, show error but keep toggle button functional
-    // Remove any partial rendering
-    const savedContent = block.dataset.originalContent
-    const fallbackContent = block.querySelector('pre')?.outerHTML || ''
-    block.innerHTML = savedContent || fallbackContent || block.innerHTML
-    block.classList.remove('rendered')
-    block.classList.add('has-error')
-
-    // Remove any existing error indicators first
-    block.querySelectorAll('.mermaid-error').forEach(el => el.remove())
-
-    // Show error indicator (auto-remove after 3 seconds)
-    const errorDiv = document.createElement('div')
-    errorDiv.className = 'mermaid-error'
-    errorDiv.textContent = `Render error: ${e instanceof Error ? e.message : 'Unknown error'}`
-
-    const header = block.querySelector('.code-header')
-    if (header) {
-      header.insertAdjacentElement('afterend', errorDiv)
-    } else {
-      block.appendChild(errorDiv)
-    }
-
-    setTimeout(() => errorDiv.remove(), 3000)
-
-    // Keep RUN button working by restoring it
-    const actionsDiv = block.querySelector('.code-actions')
-    if (actionsDiv && !actionsDiv.querySelector('[data-action="run-mermaid"]')) {
-      const runBtn = document.createElement('button')
-      runBtn.className = 'code-btn run-btn'
-      runBtn.dataset.action = 'run-mermaid'
-      runBtn.title = 'Toggle diagram'
-      runBtn.innerHTML = codeIconSvg
-      actionsDiv.appendChild(runBtn)
-    }
-
-    return false
-  }
+function applyTransform(svg: SVGElement, s: DragState) {
+  svg.style.transform = `translate(${s.translateX}px, ${s.translateY}px) scale(${s.scale})`
+  svg.style.transformOrigin = '0 0'
 }
 
-// Toggle mermaid block between rendered and code view
-async function toggleMermaidBlock(block: HTMLElement) {
-  const wasRendered = block.classList.contains('rendered')
-
-  if (wasRendered) {
-    // Get code content from stored original or from DOM
-    let codeHtml = block.dataset.originalContent
-    if (!codeHtml) {
-      // Fallback: get the pre element that contains the code
-      const preEl = block.querySelector('pre')
-      codeHtml = preEl?.outerHTML || ''
-    }
-
-    // Restore the code block with COPY and RUN buttons (no CODE button needed)
-    block.innerHTML = ''
-    const header = document.createElement('div')
-    header.className = 'code-header'
-    header.innerHTML = `
-      <span class="code-lang">mermaid</span>
-      <div class="code-actions">
-        <button class="code-btn copy-btn" data-action="copy" title="Copy code">${copyIconSvg}</button>
-        <button class="code-btn run-btn" data-action="toggle-mermaid" title="Toggle diagram">${codeIconSvg}</button>
-      </div>
-    `
-    block.appendChild(header)
-    block.insertAdjacentHTML('beforeend', codeHtml)
-    block.classList.remove('rendered', 'has-error')
-    renderedMermaidBlocks.value.delete(block)
-  } else {
-    // Switch to rendered view (manual toggle, not auto-render)
-    block.classList.remove('has-error')
-    await renderMermaidBlock(block, false)
+function getState(svg: SVGElement): DragState {
+  let s = svgStates.get(svg)
+  if (!s) {
+    s = {scale: 1, translateX: 0, translateY: 0}
+    svgStates.set(svg, s)
   }
+  return s
 }
 
-// Setup wheel zoom and drag functionality for mermaid container
-function setupMermaidInteraction(container: HTMLElement) {
-  let scale = 1
-  let translateX = 0
-  let translateY = 0
-  let isDragging = false
-  let startX = 0
-  let startY = 0
-  let lastTranslateX = 0
-  let lastTranslateY = 0
-
-  const svg = container.querySelector('svg')
+// Wheel zoom — delegated from the persistent container.
+function onWheel(e: WheelEvent) {
+  const wrapper = (e.target as HTMLElement).closest('.mermaid-interactive') as HTMLElement | null
+  if (!wrapper) return
+  const svg = wrapper.querySelector('svg') as SVGElement | null
   if (!svg) return
+  e.preventDefault()
+  e.stopPropagation()
 
-  // Enable pointer events on SVG
+  const s = getState(svg)
+  const rect = wrapper.getBoundingClientRect()
+  const mouseX = e.clientX - rect.left
+  const mouseY = e.clientY - rect.top
+  const delta = e.deltaY > 0 ? 0.9 : 1.1
+  const newScale = Math.min(Math.max(s.scale * delta, 0.1), 10)
+  const scaleChange = newScale / s.scale
+  s.translateX = mouseX - (mouseX - s.translateX) * scaleChange
+  s.translateY = mouseY - (mouseY - s.translateY) * scaleChange
+  s.scale = newScale
+  applyTransform(svg, s)
+}
+
+// Drag (pan) start — delegated from the persistent container.
+function onMouseDown(e: MouseEvent) {
+  if (e.button !== 0) return
+  const wrapper = (e.target as HTMLElement).closest('.mermaid-interactive') as HTMLElement | null
+  if (!wrapper) return
+  const svg = wrapper.querySelector('svg') as SVGElement | null
+  if (!svg) return
+  e.preventDefault()
+  const s = getState(svg)
+  dragging = {svg, state: s, startX: e.clientX, startY: e.clientY, baseTX: s.translateX, baseTY: s.translateY, wrapper}
+  wrapper.style.cursor = 'grabbing'
   svg.style.pointerEvents = 'auto'
-
-  // Wheel zoom handler
-  container.addEventListener('wheel', (e: WheelEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-
-    const rect = container.getBoundingClientRect()
-    const mouseX = e.clientX - rect.left
-    const mouseY = e.clientY - rect.top
-
-    // Calculate zoom
-    const delta = e.deltaY > 0 ? 0.9 : 1.1
-    const newScale = Math.min(Math.max(scale * delta, 0.1), 10)
-
-    // Adjust translation to zoom towards mouse position
-    const scaleChange = newScale / scale
-    translateX = mouseX - (mouseX - translateX) * scaleChange
-    translateY = mouseY - (mouseY - translateY) * scaleChange
-    scale = newScale
-
-    applyTransform()
-  }, { passive: false })
-
-  // Mouse drag handlers
-  container.addEventListener('mousedown', (e: MouseEvent) => {
-    if (e.button !== 0) return // Only left click
-    e.preventDefault()
-    isDragging = true
-    startX = e.clientX
-    startY = e.clientY
-    lastTranslateX = translateX
-    lastTranslateY = translateY
-    container.style.cursor = 'grabbing'
-  })
-
-  document.addEventListener('mousemove', (e: MouseEvent) => {
-    if (!isDragging) return
-    const deltaX = e.clientX - startX
-    const deltaY = e.clientY - startY
-    translateX = lastTranslateX + deltaX
-    translateY = lastTranslateY + deltaY
-    applyTransform()
-  })
-
-  document.addEventListener('mouseup', () => {
-    if (isDragging) {
-      isDragging = false
-      container.style.cursor = 'grab'
-    }
-  })
-
-  // Apply CSS transform
-  function applyTransform() {
-    if (svg) {
-      svg.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`
-      svg.style.transformOrigin = '0 0'
-    }
-  }
-
-  // Set initial cursor
-  container.style.cursor = 'grab'
 }
 
-// Render all mermaid blocks sequentially to avoid blocking the main thread
-async function renderMermaidBlocks() {
-  if (!containerRef.value) return
-
-  const blocks = Array.from(
-    containerRef.value.querySelectorAll('.code-block.mermaid-block[data-lang="mermaid"]')
-  ).filter(block => !renderedMermaidBlocks.value.has(block as HTMLElement)) as HTMLElement[]
-
-  if (blocks.length === 0) return
-
-  // Render one at a time, yielding to the browser between each
-  for (const block of blocks) {
-    await renderMermaidBlock(block, true)
-    // Yield to browser to keep UI responsive
-    await new Promise(resolve => setTimeout(resolve, 0))
-  }
+function onDocMouseMove(e: MouseEvent) {
+  if (!dragging) return
+  dragging.state.translateX = dragging.baseTX + (e.clientX - dragging.startX)
+  dragging.state.translateY = dragging.baseTY + (e.clientY - dragging.startY)
+  applyTransform(dragging.svg, dragging.state)
 }
 
-// Watch for rendered content changes — skip mermaid during streaming
-watch(rendered, async () => {
-  await nextTick()
-  if (props.streaming) return
-  renderedMermaidBlocks.value.clear()
-  await renderMermaidBlocks()
-})
+function onDocMouseUp() {
+  if (!dragging) return
+  dragging.wrapper.style.cursor = 'grab'
+  dragging = null
+}
 
-// When streaming ends, render all mermaid blocks
-watch(() => props.streaming, async (newVal, oldVal) => {
-  if (oldVal === true && newVal === false) {
-    await nextTick()
-    renderedMermaidBlocks.value.clear()
-    await renderMermaidBlocks()
-  }
-})
-
-onMounted(async () => {
-  await nextTick()
-  if (!props.streaming) {
-    await renderMermaidBlocks()
-  }
-})
+// Attach drag tracking to the document (persistent) once.
+document.addEventListener('mousemove', onDocMouseMove)
+document.addEventListener('mouseup', onDocMouseUp)
 
 function handleAction(e: MouseEvent) {
+  // Route external links (http/https) through the system default browser first.
+  // Falls back to window.open (new webview window) when BrowserOpenURL is not
+  // available (e.g. wails runtime not injected). Other protocols (mailto:,
+  // internal #anchors) keep default behavior.
+  const linkEl = (e.target as HTMLElement).closest('a[data-external-link]') as HTMLAnchorElement | null
+  if (linkEl) {
+    const href = linkEl.getAttribute('href') || ''
+    if (/^https?:\/\//i.test(href)) {
+      e.preventDefault()
+      try {
+        BrowserOpenURL(href)
+      } catch {
+        window.open(href, '_blank')
+      }
+      return
+    }
+  }
+
   const target = (e.target as HTMLElement).closest('[data-action]') as HTMLElement | null
   if (!target) return
   const block = target.closest('.code-block') as HTMLElement | null
@@ -412,12 +175,10 @@ function handleAction(e: MouseEvent) {
     navigator.clipboard.writeText(raw).then(() => {
       const idx = Array.from(block.parentElement?.querySelectorAll('.code-block') || []).indexOf(block)
       copiedIndex.value = idx
-      const copyIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
-      target.innerHTML = copyIcon
+      target.innerHTML = copiedIconSvg
       target.classList.add('copied')
       setTimeout(() => {
-        const origCopyIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`
-        target.innerHTML = origCopyIcon
+        target.innerHTML = copyIconSvg
         target.classList.remove('copied')
         if (copiedIndex.value === idx) copiedIndex.value = -1
       }, 1500)
@@ -437,8 +198,34 @@ function handleAction(e: MouseEvent) {
     }
   }
 
-  if (action === 'run-mermaid' || action === 'toggle-mermaid') {
-    toggleMermaidBlock(block)
+  if (action === 'download') {
+    const lang = block.dataset.lang || ''
+    const ext = lang === 'svg' ? 'svg' : 'html'
+    const d = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const ts = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
+    const filename = `export_${ts}.${ext}`
+    const mime = ext === 'svg' ? 'image/svg+xml' : 'text/html'
+    const blob = new Blob([raw], {type: mime})
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  if (action === 'toggle-mermaid') {
+    // Toggle between rendered SVG and source view via the reactive collapsed set.
+    // The key is the preprocessed code; decode here from the raw block.
+    const preprocessed = preprocessMermaidCodeForToggle(raw.trim())
+    if (mermaidCollapsed.has(preprocessed)) {
+      mermaidCollapsed.delete(preprocessed)
+    } else {
+      mermaidCollapsed.add(preprocessed)
+    }
   }
 }
 
@@ -460,5 +247,12 @@ const highlightedHtml = computed(() => {
 </script>
 
 <template>
-  <div class="markdown-body" ref="containerRef" v-html="highlightedHtml" @click="handleAction"></div>
+  <div
+    class="markdown-body"
+    ref="containerRef"
+    v-html="highlightedHtml"
+    @click="handleAction"
+    @wheel="onWheel"
+    @mousedown="onMouseDown"
+  ></div>
 </template>

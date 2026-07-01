@@ -12,18 +12,24 @@ A desktop AI chat application built with Wails v2 (Go backend + Vue 3 frontend) 
 - **Streaming Responses**: Real-time SSE streaming for smooth chat experience
 - **Multimodal Support**: Send images to vision-capable models like GPT-4 Vision
 - **Multiple Sessions**: Create and manage multiple chat sessions with drag-and-drop reordering
+- **Multiple Prompts**: Manage several system prompts and assign one per session
 - **Local Storage**: All data stored locally in SQLite database
-- **Customizable Settings**: System prompts, themes, fonts, and chat width
-- **Dark/Light Theme**: Built-in theme switching support
+- **Customizable Settings**: Prompts, theme, fonts, and chat width
+- **Theme System**: Built-in light/dark themes plus loadable CSS theme files
 - **Built-in Tools (Read/Write/Execute)**: AI models can read local files, write files, and execute shell commands directly
 - **MCP Tool Calling**: AI models can use external tools via Model Context Protocol
 - **LaTeX Rendering**: High-quality mathematical formula rendering using KaTeX
 - **Mermaid Diagrams**: Render flowcharts, sequence diagrams, and more
+- **HTML/SVG Code Blocks**: Download rendered HTML/SVG as a file, or preview in a new tab
+- **In-chat Search**: Find text within the current conversation (Ctrl+F)
+- **Right-click Context Menu**: Quote, copy, retry, and edit-and-resend from any message
+- **Drag & Drop**: Drop image files directly into the chat to attach them
 - **Performance Statistics**: Token usage, response times, and generation speed tracking
 - **Keyboard Shortcuts**: Configurable shortcuts for common actions
 - **Custom CSS**: Full CSS customization with highest priority
 - **Resizable Sidebar**: Drag to resize sidebar (200-500px)
 - **Window State Persistence**: Remembers window position, size, and maximized state
+- **Desktop Notifications**: Optional notification when a response finishes generating
 
 ## Image Input Features
 
@@ -145,26 +151,32 @@ To build a redistributable, production mode package, use `wails build`.
 - `app.go` - Main application logic with Wails bindings and MCP tool calling
 - `window_state.go` - Window position/size/maximized state persistence
 - `internal/` - Backend packages
-  - `db/` - SQLite database with migrations (V1-V15)
+  - `db/` - SQLite database with migrations (V1-V23)
   - `llm/` - OpenAI-compatible API client with streaming and tool calling support
   - `model/` - Data models including MCP types
   - `mcp/` - MCP protocol implementation (JSON-RPC 2.0 client)
-  - `tools/` - Built-in tool implementations (file_read, file_write, shell_exec)
+  - `tools/` - Built-in tool implementations (file_read, file_write, shell_exec, provide_selection)
   - `provider/` - Provider CRUD service
   - `session/` - Session CRUD service
   - `message/` - Message CRUD service
+  - `prompt/` - System prompt CRUD service
   - `settings/` - Settings key-value service
   - `fonts/` - Cross-platform system font enumeration
+  - `notify/` - Desktop notifications (Windows toast + cross-platform stub)
 - `frontend/` - Vue 3 frontend with TypeScript
   - `src/components/` - UI components
     - `ChatInput.vue` - Message input with image support
     - `ChatWindow.vue` - Chat area with message list
     - `MessageBubble.vue` - Message display with MCP tool call UI
-    - `MarkdownMessage.vue` - Markdown rendering with LaTeX and Mermaid
+    - `MarkdownMessage.vue` - Markdown rendering with LaTeX, Mermaid, and code-block actions
     - `SettingsModal.vue` - Settings interface with 6 tabs
     - `Sidebar.vue` - Session sidebar
     - `SessionList.vue` - Session list with drag-and-drop
-  - `src/stores/` - Pinia state management
+    - `SearchBar.vue` - In-chat Ctrl+F search bar
+    - `SelectionPanel.vue` - UI for the `provide_selection` tool
+    - `ContextMenu.vue` - Reusable right-click context menu
+    - `ProviderModal.vue` - Provider add/edit modal
+  - `src/stores/` - Pinia state management (provider, session, message, settings, prompt, search)
   - `src/utils/` - Utilities including markdown.ts
 - `build/` - Build configurations and assets
 
@@ -177,11 +189,12 @@ The application uses SQLite for local storage, located at:
 
 ### Database Schema
 - `providers` - API provider configurations
-- `sessions` - Chat sessions linked to providers (with sort_order for ordering)
-- `messages` - Chat messages with images, performance stats, and MCP tool data
-- `settings` - Application settings (theme, fonts, shortcuts, etc.)
+- `sessions` - Chat sessions linked to providers (with sort_order and prompt_id for ordering and prompt assignment)
+- `messages` - Chat messages with images, performance stats, reasoning content, and MCP tool data
+- `prompts` - Managed system prompts (assignable to sessions via prompt_id)
+- `settings` - Application settings (theme, fonts, shortcuts, tools, notifications, etc.)
 - `mcp_servers` - MCP server configurations
-- `schema_version` - Current migration version (V15)
+- `schema_version` - Current migration version (V23)
 
 ## Technical Details
 

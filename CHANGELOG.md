@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [v1.7.0] - 2026-07-01
+
+### Added
+- Download button on HTML/SVG code blocks (next to the copy button) — exports the rendered content directly as `export_YYYYMMDDHHMMSS.html` or `.svg`
+- Web links in AI responses now open in the system default browser via Wails `BrowserOpenURL`, falling back to an in-app window when no browser is available
+
+### Fixed
+- Mermaid lazy-load was silently broken by the `manualChunks` config: forcing Mermaid into its own chunk pulled Vue's `defineAsyncComponent` helper into it, which the entry imported statically, so Vite injected a `<link rel="modulepreload">` for the ~640KB Mermaid chunk on startup. Removed `manualChunks` so Rollup's automatic code-splitting keeps Mermaid/KaTeX as purely dynamic chunks — startup preload dropped to entry + CSS only.
+- Mermaid diagrams intermittently failed to render (sometimes only some diagrams in a message showed; switching sessions and back could make them appear). Root cause: the SVG was written to the DOM imperatively *after* `v-html` bound, holding `HTMLElement` references across the `await` for the lazy Mermaid load — when a lazy highlight.js/KaTeX load fired `renderRevision++` during that window, `v-html` rebuilt the DOM and the held node became detached, so the SVG landed in a detached node and was never visible. Rewrote Mermaid rendering to store the SVG in a reactive cache that the markdown renderer reads inline, so the SVG is always part of the `v-html` output and there is no imperative DOM patching to race.
+
 ## [v1.6.0] - 2026-06-07
 
 ### Changed
@@ -12,11 +22,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Defer prompt store initialization from app startup to first ChatWindow mount
 - KaTeX CSS injected on demand instead of loaded globally
 - Add Vite `manualChunks` configuration for optimal code splitting
-
-## [Unreleased]
-
-### Added
-- GitHub Actions CI/CD for automatic multi-platform builds
 
 ## [v1.5.0] - 2026-05-18
 

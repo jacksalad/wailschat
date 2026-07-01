@@ -1,5 +1,6 @@
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js/lib/core'
+import {reactive} from 'vue'
 
 // ── Lazy-loaded heavy dependencies ──
 // Dynamic imports are used here because these modules are 300KB–1MB+ and only
@@ -43,6 +44,107 @@ export function prefetchKatex() {
     await ensureKatexCss()
     lazyLoadCallbacks.forEach(cb => cb())
   })
+}
+
+// ── Lazy-loaded Mermaid ──
+// Mermaid (~1MB+) is only needed for flowchart/diagram code blocks. It is
+// dynamically imported on first use. Unlike before, the rendered SVG is stored
+// in a REACTIVE map so the fence renderer can inline it directly into the
+// markdown HTML. This removes the old imperative post-render DOM patching that
+// raced against v-html rebuilds (see CHANGELOG fix).
+//
+// The fence rule runs inside the component's `rendered` computed; reading this
+// map establishes a reactive dependency, so when a render completes and the map
+// updates, `rendered` recomputes and v-html rebinds with the SVG inline.
+
+let mermaidModule: typeof import('mermaid')['default'] | null = null
+let mermaidLoadPromise: Promise<typeof import('mermaid')['default']> | null = null
+let mermaidInitialized = false
+
+function loadMermaid() {
+  if (!mermaidLoadPromise) {
+    mermaidLoadPromise = import('mermaid').then(mod => mod.default)
+  }
+  return mermaidLoadPromise
+}
+
+async function ensureMermaid() {
+  if (mermaidModule) return mermaidModule
+  const mermaid = await loadMermaid()
+  mermaidModule = mermaid
+  if (!mermaidInitialized) {
+    mermaidInitialized = true
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'default',
+      securityLevel: 'loose',
+      fontFamily: 'inherit',
+    })
+  }
+  return mermaid
+}
+
+/** Reactive cache: preprocessed mermaid code → rendered SVG (or error marker). */
+export const mermaidSvgMap = reactive(new Map<string, string>())
+/** Error entries: preprocessed code → error message. */
+export const mermaidErrorMap = reactive(new Map<string, string>())
+/** In-flight render promises keyed by preprocessed code, to dedupe concurrent renders. */
+const mermaidPending = new Map<string, Promise<void>>()
+
+let mermaidIdCounter = 0
+
+/** Track which mermaid blocks the user has collapsed back to source view (reactive). */
+export const mermaidCollapsed = reactive(new Set<string>())
+
+function startMermaidRender(preprocessedCode: string) {
+  if (mermaidPending.has(preprocessedCode)) return
+  if (mermaidSvgMap.has(preprocessedCode) || mermaidErrorMap.has(preprocessedCode)) return
+  const p = (async () => {
+    try {
+      const mermaid = await ensureMermaid()
+      const id = `mermaid-${++mermaidIdCounter}-${Date.now()}`
+      const {svg} = await mermaid.render(id, preprocessedCode)
+      mermaidSvgMap.set(preprocessedCode, svg)
+      mermaidErrorMap.delete(preprocessedCode)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      mermaidErrorMap.set(preprocessedCode, msg)
+      mermaidSvgMap.delete(preprocessedCode)
+    } finally {
+      mermaidPending.delete(preprocessedCode)
+    }
+  })()
+  mermaidPending.set(preprocessedCode, p)
+}
+
+/**
+ * Inline-render a mermaid code block for the fence rule.
+ * Returns the HTML to embed (either the cached SVG, the raw source when
+ * collapsed, an error notice, or a loading placeholder). Reading the reactive
+ * maps ties the caller into their reactivity so SVG arrival triggers a re-render.
+ */
+function renderMermaidBlockHtml(rawCode: string): string {
+  const preprocessedCode = preprocessMermaidCode(rawCode.trim())
+
+  // User collapsed this block back to source view
+  if (mermaidCollapsed.has(preprocessedCode)) {
+    return `<pre class="hljs"><code>${escapeHtml(rawCode)}</code></pre>`
+  }
+
+  const svg = mermaidSvgMap.get(preprocessedCode)
+  if (svg) {
+    return `<div class="mermaid-rendered"><div class="mermaid-interactive">${svg}</div></div>`
+  }
+
+  const err = mermaidErrorMap.get(preprocessedCode)
+  if (err) {
+    return `<div class="mermaid-error">Render error: ${escapeHtml(err)}</div><pre class="hljs"><code>${escapeHtml(rawCode)}</code></pre>`
+  }
+
+  // Not rendered yet — kick off the async render and show a placeholder.
+  // The reactive map update will recompute the markdown HTML when ready.
+  startMermaidRender(preprocessedCode)
+  return `<div class="mermaid-loading">Rendering diagram…</div>`
 }
 
 // Register mermaid language (no syntax highlighting needed, just prevents errors)
@@ -177,6 +279,22 @@ export const md = new MarkdownIt({
   typographer: false,
 })
 
+// Override link_open: mark external links so the click handler can route them
+// through the system default browser (BrowserOpenURL) instead of navigating
+// the webview. target/rel are also set as a fallback for non-JS contexts.
+const defaultLinkOpen = md.renderer.rules.link_open || function (tokens, idx, options, _env, self) {
+  return self.renderToken(tokens, idx, options)
+}
+md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+  const token = tokens[idx]
+  if (token.attrIndex('target') < 0) {
+    token.attrPush(['target', '_blank'])
+    token.attrPush(['rel', 'noopener noreferrer'])
+    token.attrPush(['data-external-link', ''])
+  }
+  return defaultLinkOpen(tokens, idx, options, env, self)
+}
+
 // Override fence renderer
 md.renderer.rules.fence = (tokens, idx) => {
   const token = tokens[idx]
@@ -193,19 +311,26 @@ md.renderer.rules.fence = (tokens, idx) => {
   }
 
   const canRun = lang === 'html' || lang === 'svg'
+  const canDownload = canRun
   const isMermaid = lang === 'mermaid'
   const rawB64 = btoa(unescape(encodeURIComponent(str)))
   const extraClass = isMermaid ? ' mermaid-block' : ''
 
   const copyIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`
+  const downloadIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>`
   const runIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg>`
   const codeIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`
 
+  // For mermaid blocks, replace the source <pre> with the inline-rendered SVG
+  // (or a loading placeholder). The render is kicked off lazily and the SVG
+  // lands in the reactive mermaidSvgMap, which recomputes this HTML.
+  const body = isMermaid ? renderMermaidBlockHtml(str) : `<pre class="hljs"><code>${highlighted}</code></pre>`
+
   return `<div class="code-block${extraClass}" data-raw="${rawB64}" data-lang="${langLabel}">
 <div class="code-header"><span class="code-lang">${langLabel}</span><div class="code-actions">
-<button class="code-btn copy-btn" data-action="copy" title="Copy code">${copyIcon}</button>${canRun ? `<button class="code-btn run-btn" data-action="run" title="Open in new tab">${runIcon}</button>` : ''}${isMermaid ? `<button class="code-btn run-btn" data-action="run-mermaid" title="Toggle diagram">${codeIcon}</button>` : ''}
+<button class="code-btn copy-btn" data-action="copy" title="Copy code">${copyIcon}</button>${canDownload ? `<button class="code-btn download-btn" data-action="download" title="Download file">${downloadIcon}</button>` : ''}${canRun ? `<button class="code-btn run-btn" data-action="run" title="Open in new tab">${runIcon}</button>` : ''}${isMermaid ? `<button class="code-btn run-btn" data-action="toggle-mermaid" title="Toggle diagram">${codeIcon}</button>` : ''}
 </div></div>
-<pre class="hljs"><code>${highlighted}</code></pre></div>`
+${body}</div>`
 }
 
 function escapeHtml(str: string): string {
@@ -215,6 +340,48 @@ function escapeHtml(str: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;')
+}
+
+// ── Mermaid preprocessing ──
+// Fix non-ASCII (e.g. Chinese) text inside [] and {} by wrapping it in quotes,
+// which mermaid requires for labels containing such characters.
+function hasNonAscii(text: string): boolean {
+  return /[^\x00-\x7F]/.test(text)
+}
+
+/** Public alias so the toggle UI can compute the same cache key from raw code. */
+export function preprocessMermaidCodeForToggle(code: string): string {
+  return preprocessMermaidCode(code)
+}
+
+function preprocessMermaidCode(code: string): string {
+  // Process [] brackets: match [content] where content has non-ASCII and not already quoted
+  let fixed = code.replace(/\[([^\]]*)\]/g, (match, content: string) => {
+    if (content.startsWith('"') || content.startsWith("'")) {
+      return match
+    }
+    if (hasNonAscii(content)) {
+      return `["${content}"]`
+    }
+    return match
+  })
+
+  // Process {} braces: match {content} where content has non-ASCII and not already quoted
+  fixed = fixed.replace(/\{([^}]*)\}/g, (match, content: string) => {
+    if (content.startsWith('"') || content.startsWith("'")) {
+      return match
+    }
+    // Skip style/class directives like { ... }
+    if (content.includes(':') || content.includes(';') || content.startsWith(' ')) {
+      return match
+    }
+    if (hasNonAscii(content)) {
+      return `{"${content}"}`
+    }
+    return match
+  })
+
+  return fixed
 }
 
 // Protect LaTeX blocks from markdown preprocessing by replacing them with HTML comment placeholders.

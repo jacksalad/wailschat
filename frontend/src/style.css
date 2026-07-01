@@ -608,6 +608,13 @@ html.dark {
   background-color: #dcfce7;
   color: #15803d;
 }
+.download-btn {
+  color: #2563eb;
+}
+.download-btn:hover {
+  background-color: #dbeafe;
+  color: #1d4ed8;
+}
 /* Dark code-block & code-header */
 html.dark .code-block {
   border-color: #1e293b;
@@ -631,6 +638,13 @@ html.dark .run-btn {
 html.dark .run-btn:hover {
   background-color: #052e16;
   color: #4ade80;
+}
+html.dark .download-btn {
+  color: #60a5fa;
+}
+html.dark .download-btn:hover {
+  background-color: #1e3a8a;
+  color: #93c5fd;
 }
 
 /* ── Typing cursor ── */
@@ -822,6 +836,19 @@ html.dark .markdown-body .katex-error {
   max-width: 900px;
   width: 100%;
   height: auto;
+}
+
+/* Loading placeholder while a mermaid diagram renders asynchronously */
+.markdown-body .code-block.mermaid-block .mermaid-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1.5rem;
+  color: var(--text-secondary-dark, #94a3b8);
+  font-size: 0.875rem;
+  background-color: transparent;
+  width: 100%;
+  min-width: 700px;
 }
 
 /* Hide the original code content after rendering */
